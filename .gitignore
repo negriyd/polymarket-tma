@@ -1,0 +1,39 @@
+# Java / Gradle
+.gradle/
+build/
+out/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Node
+node_modules/
+dist/
+.cache/
+.pnpm-store/
+.eslintcache
+.parcel-cache/
+
+# Env
+.env
+.env.local
+.env.*.local
+deploy/.env
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+
+# Cursor / agent
+.cursor/
+
+# Build artifacts
+backend/bin/
+frontend/coverage/
