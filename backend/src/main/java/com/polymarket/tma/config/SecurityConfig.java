@@ -56,7 +56,8 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration cfg = new CorsConfiguration();
         cfg.setAllowCredentials(true);
-        cfg.setAllowedOrigins(props.cors().allowedOrigins());
+        // Patterns (not strict origins) so dev tunnels like https://*.trycloudflare.com match.
+        cfg.setAllowedOriginPatterns(props.cors().allowedOrigins());
         cfg.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(Arrays.asList("*"));
         cfg.setExposedHeaders(Arrays.asList("Authorization", "X-Trace-Id"));

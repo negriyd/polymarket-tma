@@ -38,8 +38,13 @@ public class GammaClient {
     }
 
     public Mono<List<MarketDto>> listMarkets(int limit, int offset, String order, boolean ascending, String tag, String search) {
+        return listMarkets(limit, offset, order, ascending, tag, search, null);
+    }
+
+    public Mono<List<MarketDto>> listMarkets(int limit, int offset, String order, boolean ascending,
+                                            String tag, String search, String slug) {
         return client.get()
-                .uri(uri -> buildListUri(uri, limit, offset, order, ascending, tag, search))
+                .uri(uri -> buildListUri(uri, limit, offset, order, ascending, tag, search, slug))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::mapError)
                 .bodyToMono(new ParameterizedTypeReference<List<MarketDto>>() {})
@@ -47,14 +52,14 @@ public class GammaClient {
                 .doOnError(e -> log.warn("Gamma listMarkets failed: {}", e.toString()));
     }
 
-    public Mono<MarketDto> getMarket(String conditionId) {
+    public Mono<MarketDto> getMarket(String gammaMarketId) {
         return client.get()
-                .uri(uri -> uri.path("/markets/{id}").build(conditionId))
+                .uri(uri -> uri.path("/markets/{id}").build(gammaMarketId))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::mapError)
                 .bodyToMono(MarketDto.class)
                 .retryWhen(retrySpec("getMarket"))
-                .doOnError(e -> log.warn("Gamma getMarket({}) failed: {}", conditionId, e.toString()));
+                .doOnError(e -> log.warn("Gamma getMarket({}) failed: {}", gammaMarketId, e.toString()));
     }
 
     public Mono<PriceHistoryDto> getPriceHistory(String tokenId, String interval) {
@@ -71,7 +76,7 @@ public class GammaClient {
     }
 
     private static java.net.URI buildListUri(UriBuilder uri, int limit, int offset, String order,
-                                             boolean ascending, String tag, String search) {
+                                             boolean ascending, String tag, String search, String slug) {
         uri.path("/markets")
                 .queryParam("limit", limit)
                 .queryParam("offset", offset)
@@ -84,6 +89,9 @@ public class GammaClient {
         }
         if (search != null && !search.isBlank()) {
             uri.queryParam("search", search);
+        }
+        if (slug != null && !slug.isBlank()) {
+            uri.queryParam("slug", slug);
         }
         return uri.build();
     }

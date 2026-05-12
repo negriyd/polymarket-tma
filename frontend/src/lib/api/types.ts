@@ -18,6 +18,7 @@ export interface TokenPair {
 }
 
 export interface Market {
+  id?: string;
   conditionId: string;
   question: string;
   slug?: string;
@@ -31,6 +32,8 @@ export interface Market {
   acceptingOrders?: boolean;
   volume?: number;
   volume24h?: number;
+  /** Matches Gamma/backend JSON field `volume24hr`. */
+  volume24hr?: number;
   liquidity?: number;
   outcomes?: string[];
   clobTokenIds?: string[];

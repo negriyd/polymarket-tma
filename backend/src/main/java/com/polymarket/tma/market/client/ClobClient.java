@@ -3,6 +3,7 @@ package com.polymarket.tma.market.client;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.market.dto.OrderbookDto;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,32 @@ public class ClobClient {
 
     public ClobClient(WebClient.Builder builder, AppProperties props) {
         this.client = builder.baseUrl(props.polymarket().clobBaseUrl()).build();
+    }
+
+    /** Resolves Gamma list slug from on-chain condition id (CLOB market identity). */
+    public Mono<String> getMarketSlugByConditionId(String conditionId) {
+        return client.get()
+                .uri(uri -> uri.path("/markets/{cid}").build(conditionId))
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, resp -> resp.bodyToMono(String.class).defaultIfEmpty("")
+                        .map(body -> ApiException.upstream("CLOB_HTTP_" + resp.statusCode().value(),
+                                "CLOB error: " + resp.statusCode().value() + " " + body)))
+                .bodyToMono(JsonNode.class)
+                .map(node -> {
+                    JsonNode slug = node.get("market_slug");
+                    return slug != null && slug.isTextual() ? slug.asText() : "";
+                })
+                .filter(s -> !s.isBlank())
+                .switchIfEmpty(Mono.error(ApiException.notFound(
+                        "MARKET_NOT_FOUND",
+                        "CLOB response missing market_slug for condition: " + conditionId)))
+                .retryWhen(Retry.backoff(2, Duration.ofMillis(200))
+                        .maxBackoff(Duration.ofSeconds(2))
+                        .jitter(0.5)
+                        .filter(t -> t instanceof ApiException api
+                                && (api.getCode().startsWith("CLOB_HTTP_5")
+                                    || api.getCode().equals("CLOB_HTTP_429"))))
+                .doOnError(e -> log.warn("CLOB market slug({}) failed: {}", conditionId, e.toString()));
     }
 
     public Mono<OrderbookDto> getOrderbook(String tokenId) {

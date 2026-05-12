@@ -56,6 +56,7 @@ class GammaClientTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("""
                         [{
+                          "id": "999",
                           "conditionId": "0xabc",
                           "question": "Will it rain tomorrow?",
                           "slug": "rain",
@@ -72,6 +73,7 @@ class GammaClientTest {
                 .assertNext(items -> {
                     assertThat(items).hasSize(1);
                     MarketDto m = items.get(0);
+                    assertThat(m.id()).isEqualTo("999");
                     assertThat(m.conditionId()).isEqualTo("0xabc");
                     assertThat(m.active()).isTrue();
                     assertThat(m.outcomes()).containsExactly("Yes", "No");

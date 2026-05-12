@@ -22,6 +22,7 @@ class PolymarketInstantDeserializerTest {
         ObjectMapper om = new ObjectMapper().registerModule(new JavaTimeModule());
         String json = """
                 {
+                  "id": "42",
                   "conditionId": "0xabc",
                   "question": "q",
                   "slug": "slug",

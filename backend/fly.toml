@@ -1,3 +1,4 @@
+# Spring Boot API only. Full stack (Postgres, Redis, SPA): see deploy/fly/README.md
 app = "polymarket-tma-backend"
 primary_region = "fra"
 

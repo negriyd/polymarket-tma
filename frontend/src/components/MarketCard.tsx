@@ -34,7 +34,7 @@ export function MarketCard({ market, compact }: Props) {
 
   return (
     <Link
-      to={`/markets/${market.conditionId}`}
+      to={`/markets/${market.id ?? market.conditionId}`}
       onClick={() => hapticImpact('light')}
       className="block"
     >

@@ -22,6 +22,7 @@ class MarketDtoGammaJsonTest {
             List<MarketDto> list = om.readValue(in, new TypeReference<>() {});
             assertThat(list).isNotEmpty();
             MarketDto m = list.getFirst();
+            assertThat(m.id()).isEqualTo("2128535");
             assertThat(m.conditionId()).isNotBlank();
             assertThat(m.outcomes()).hasSize(2);
         }

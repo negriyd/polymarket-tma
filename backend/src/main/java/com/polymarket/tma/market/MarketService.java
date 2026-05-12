@@ -9,11 +9,14 @@ import com.polymarket.tma.market.dto.MarketListResponse;
 import com.polymarket.tma.market.dto.OrderbookDto;
 import com.polymarket.tma.market.dto.PriceHistoryDto;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 @Service
 public class MarketService {
+
+    private static final Pattern CONDITION_ID_HEX = Pattern.compile("^0x[a-fA-F0-9]{64}$");
 
     private final GammaClient gamma;
     private final ClobClient clob;
@@ -45,10 +48,28 @@ public class MarketService {
                 });
     }
 
-    public Mono<MarketDto> get(String conditionId) {
-        String key = "pm:market:" + conditionId;
-        return cache.readThrough(key, MarketDto.class, props.polymarket().detailCacheTtl(), gamma.getMarket(conditionId))
-                .switchIfEmpty(Mono.error(ApiException.notFound("MARKET_NOT_FOUND", "Market not found: " + conditionId)));
+    public Mono<MarketDto> get(String marketKey) {
+        String key = "pm:market:" + marketKey;
+        Mono<MarketDto> loader = isHexConditionId(marketKey)
+                ? resolveGammaByConditionId(marketKey)
+                : gamma.getMarket(marketKey);
+        return cache.readThrough(key, MarketDto.class, props.polymarket().detailCacheTtl(), loader)
+                .switchIfEmpty(Mono.error(ApiException.notFound("MARKET_NOT_FOUND", "Market not found: " + marketKey)));
+    }
+
+    private Mono<MarketDto> resolveGammaByConditionId(String conditionId) {
+        return clob.getMarketSlugByConditionId(conditionId)
+                .flatMap(slug -> gamma.listMarkets(1, 0, "volume24hr", false, null, null, slug))
+                .flatMap(list -> list.stream()
+                        .filter(m -> conditionId.equalsIgnoreCase(m.conditionId()))
+                        .findFirst()
+                        .map(Mono::just)
+                        .orElseGet(() ->
+                                Mono.error(ApiException.notFound("MARKET_NOT_FOUND", "Market not found: " + conditionId))));
+    }
+
+    private static boolean isHexConditionId(String marketKey) {
+        return marketKey != null && CONDITION_ID_HEX.matcher(marketKey).matches();
     }
 
     public Mono<OrderbookDto> orderbook(String tokenId) {

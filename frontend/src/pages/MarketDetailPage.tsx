@@ -8,32 +8,36 @@ import { subscribeToMarket } from '@/lib/ws/stompClient';
 import { hapticImpact } from '@/lib/telegram/webApp';
 
 export function MarketDetailPage() {
-  const { conditionId = '' } = useParams();
+  const { marketId = '' } = useParams();
   const qc = useQueryClient();
   const [livePayload, setLivePayload] = useState<unknown>(null);
 
   const market = useQuery({
-    queryKey: ['market', conditionId],
-    queryFn: () => api.getMarket(conditionId),
-    enabled: !!conditionId,
+    queryKey: ['market', marketId],
+    queryFn: () => api.getMarket(marketId),
+    enabled: !!marketId,
   });
 
   const favorites = useQuery({
     queryKey: ['favorites'],
     queryFn: api.listFavorites,
   });
-  const isFavorite = favorites.data?.some((f) => f.conditionId === conditionId) ?? false;
+  const cid = market.data?.conditionId;
+  const isFavorite =
+    cid != null && (favorites.data?.some((f) => f.conditionId === cid) ?? false);
 
   const toggleFav = useMutation({
-    mutationFn: () =>
-      isFavorite ? api.removeFavorite(conditionId) : api.addFavorite(conditionId).then(() => undefined),
+    mutationFn: () => {
+      if (!cid) return Promise.resolve();
+      return isFavorite ? api.removeFavorite(cid) : api.addFavorite(cid).then(() => undefined);
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['favorites'] }),
   });
 
   useEffect(() => {
-    if (!conditionId) return;
+    if (!cid) return;
     let cleanup: (() => void) | null = null;
-    subscribeToMarket(conditionId, (msg) => setLivePayload(msg))
+    subscribeToMarket(cid, (msg) => setLivePayload(msg))
       .then((c) => {
         cleanup = c;
       })
@@ -43,7 +47,7 @@ export function MarketDetailPage() {
     return () => {
       cleanup?.();
     };
-  }, [conditionId]);
+  }, [cid]);
 
   if (market.isLoading) return <Spinner label="Loading market…" />;
   if (market.error || !market.data)
@@ -81,7 +85,7 @@ export function MarketDetailPage() {
             }}
             className="text-2xl"
             aria-label={isFavorite ? 'Unsave' : 'Save'}
-            disabled={toggleFav.isPending}
+            disabled={!cid || toggleFav.isPending}
           >
             {isFavorite ? '★' : '☆'}
           </button>
@@ -94,7 +98,7 @@ export function MarketDetailPage() {
       </section>
 
       <section className="grid grid-cols-3 gap-2">
-        <Stat label="Vol 24h" value={fmt(m.volume24h)} />
+        <Stat label="Vol 24h" value={fmt(m.volume24hr ?? m.volume24h)} />
         <Stat label="Liquidity" value={fmt(m.liquidity)} />
         <Stat label="Ends" value={m.endDate ? new Date(m.endDate).toLocaleDateString() : '—'} />
       </section>

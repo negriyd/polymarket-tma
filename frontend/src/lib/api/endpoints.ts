@@ -30,8 +30,8 @@ export const api = {
       .get<MarketList>('/api/markets', { params })
       .then((r) => r.data),
 
-  getMarket: (conditionId: string) =>
-    http.get<Market>(`/api/markets/${conditionId}`).then((r) => r.data),
+  getMarket: (marketKey: string) =>
+    http.get<Market>(`/api/markets/${marketKey}`).then((r) => r.data),
 
   getOrderbook: (conditionId: string, tokenId: string) =>
     http

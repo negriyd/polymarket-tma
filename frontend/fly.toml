@@ -1,0 +1,35 @@
+# Static SPA (nginx). Deploy from repo root:
+#   cd frontend && fly deploy --remote-only \
+#     --build-arg VITE_API_BASE_URL=https://<YOUR-BACKEND>.fly.dev
+#
+# App name must match `fly apps create` / first `fly launch` (default: polymarket-tma-web).
+app = "polymarket-tma-web"
+primary_region = "fra"
+
+[build]
+  dockerfile = "../deploy/Dockerfile.frontend"
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 120
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "get"
+  path = "/"
+  timeout = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

@@ -2,6 +2,8 @@
 
 This guide assumes a fresh GitHub repo connected to Fly.io and Cloudflare. Run through it once per environment.
 
+**All services on Fly (Postgres, Redis, API, SPA in one place):** see [`deploy/fly/README.md`](../deploy/fly/README.md).
+
 ## 0. Provision managed services
 
 | Service  | Provider     | Notes |
@@ -12,6 +14,10 @@ This guide assumes a fresh GitHub repo connected to Fly.io and Cloudflare. Run t
 | Logs     | Grafana Cloud (Loki)             | free tier covers MVP |
 
 ## 1. Backend on Fly.io
+
+After `fly postgres create` + `fly postgres attach --app polymarket-tma-backend <pg-app>`, Fly sets **`DATABASE_URL`** (`postgres://…`). The backend maps that to JDBC automatically if **`POSTGRES_URL`** is not set — you do **not** have to hand-convert to `jdbc:postgresql://…` unless you prefer explicit secrets.
+
+Alternatively, use Neon/Supabase and set **`POSTGRES_URL`**, **`POSTGRES_USER`**, **`POSTGRES_PASSWORD`** manually (JDBC URL with `?sslmode=require` for TLS).
 
 ```bash
 cd backend

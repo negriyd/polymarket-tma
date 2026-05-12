@@ -9,6 +9,8 @@ import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record MarketDto(
+        /** Gamma internal market id (stringified); required for {@code GET /markets/{id}} on Gamma. */
+        @JsonProperty("id") String id,
         @JsonProperty("conditionId") String conditionId,
         String question,
         String slug,

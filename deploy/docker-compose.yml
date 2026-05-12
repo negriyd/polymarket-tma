@@ -57,9 +57,13 @@ services:
     build:
       context: ../frontend
       dockerfile: ../deploy/Dockerfile.frontend
+      args:
+        # Baked into the JS bundle at build time. Empty = same-origin `/api` + `/ws` (nginx proxies to backend).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     container_name: polymarket-frontend
-    environment:
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    depends_on:
+      backend:
+        condition: service_started
     ports:
       - "5173:80"
     profiles: ["full"]

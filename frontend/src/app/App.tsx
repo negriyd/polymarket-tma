@@ -58,7 +58,7 @@ export function App() {
               <Route element={<AppLayout />}>
                 <Route index element={<HomePage />} />
                 <Route path="markets" element={<MarketsPage />} />
-                <Route path="markets/:conditionId" element={<MarketDetailPage />} />
+                <Route path="markets/:marketId" element={<MarketDetailPage />} />
                 <Route path="favorites" element={<FavoritesPage />} />
                 <Route path="wallet" element={<WalletPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

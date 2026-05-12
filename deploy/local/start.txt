@@ -1,0 +1,14 @@
+VITE_API_BASE_URL= docker compose --profile full up -d --build
+
+# Check locally:
+
+# curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5173/
+# curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/actuator/health
+# (Expect 200; backend may need a few seconds after start.)
+
+
+cloudflared tunnel --url http://127.0.0.1:5173
+
+
+# Stop:
+docker compose --profile full down
