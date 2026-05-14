@@ -59,7 +59,7 @@ public class MarketService {
 
     private Mono<MarketDto> resolveGammaByConditionId(String conditionId) {
         return clob.getMarketSlugByConditionId(conditionId)
-                .flatMap(slug -> gamma.listMarkets(1, 0, "volume24hr", false, null, null, slug))
+                .flatMap(slug -> gamma.listMarketsBySlug(1, 0, "volume24hr", false, slug))
                 .flatMap(list -> list.stream()
                         .filter(m -> conditionId.equalsIgnoreCase(m.conditionId()))
                         .findFirst()

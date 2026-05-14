@@ -1,0 +1,18 @@
+spring:
+#  profiles:
+#    active: local
+  datasource:
+    url: jdbc:postgresql://localhost:5433/polymarket_tma
+    username: polymarket
+    password: polymarket
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+      timeout: 2s
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8080

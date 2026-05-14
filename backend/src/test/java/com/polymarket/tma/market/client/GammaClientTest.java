@@ -56,7 +56,6 @@ class GammaClientTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("""
                         [{
-                          "id": "999",
                           "conditionId": "0xabc",
                           "question": "Will it rain tomorrow?",
                           "slug": "rain",
@@ -73,12 +72,48 @@ class GammaClientTest {
                 .assertNext(items -> {
                     assertThat(items).hasSize(1);
                     MarketDto m = items.get(0);
-                    assertThat(m.id()).isEqualTo("999");
                     assertThat(m.conditionId()).isEqualTo("0xabc");
                     assertThat(m.active()).isTrue();
                     assertThat(m.outcomes()).containsExactly("Yes", "No");
                     assertThat(m.outcomePrices()).containsExactly("0.6", "0.4");
                     assertThat(m.clobTokenIds()).containsExactly("t1", "t2");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void listMarketsUsesPublicSearchWhenSearchSet() {
+        wm.stubFor(get(urlPathEqualTo("/public-search")).willReturn(aResponse()
+                .withHeader("Content-Type", "application/json")
+                .withBody("""
+                        {
+                          "events": [
+                            {
+                              "markets": [
+                                {
+                                  "conditionId": "0xsearch1",
+                                  "question": "Search hit A?",
+                                  "slug": "a",
+                                  "volume": "100",
+                                  "volume24hr": 50,
+                                  "active": true,
+                                  "closed": false,
+                                  "outcomes": "[\\"Yes\\", \\"No\\"]",
+                                  "outcomePrices": "[\\"0.5\\", \\"0.5\\"]",
+                                  "clobTokenIds": "[\\"ta\\",\\"tb\\"]"
+                                }
+                              ]
+                            }
+                          ],
+                          "pagination": { "hasMore": false, "totalResults": 1 }
+                        }
+                        """)));
+
+        StepVerifier.create(client.listMarkets(20, 0, "volume24hr", false, null, "election"))
+                .assertNext(items -> {
+                    assertThat(items).hasSize(1);
+                    assertThat(items.get(0).conditionId()).isEqualTo("0xsearch1");
+                    assertThat(items.get(0).question()).isEqualTo("Search hit A?");
                 })
                 .verifyComplete();
     }
