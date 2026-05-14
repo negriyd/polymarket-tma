@@ -42,7 +42,7 @@ services:
       retries: 10
 
   backend:
-    image: docker.io/negriyd/polymarket-tma-backend:latest
+    image: docker.io/negriyd/polymarket-tma-backend:2025-05-14
     container_name: polymarket-backend
     depends_on:
       postgres:
@@ -62,7 +62,7 @@ services:
     profiles: ["full"]
 
   frontend:
-    image: docker.io/negriyd/polymarket-tma-frontend:latest
+    image: docker.io/negriyd/polymarket-tma-frontend:2025-05-14
     container_name: polymarket-frontend
     depends_on:
       backend:
