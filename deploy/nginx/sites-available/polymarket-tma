@@ -1,0 +1,81 @@
+# Install: sudo cp deploy/nginx/sites-available/polymarket-tma /etc/nginx/sites-available/polymarket-tma
+# Enable:  sudo ln -sf /etc/nginx/sites-available/polymarket-tma /etc/nginx/sites-enabled/polymarket-tma
+# Test:    sudo nginx -t && sudo systemctl reload nginx
+#
+# Evolved from polymarket-tma-origin: same Certbot TLS directives, plus /api and /ws → backend.
+
+# Main app — HTTPS (TLS lines match origin + Certbot comments)
+server {
+    server_name polymarket-tma.xyz app.polymarket-tma.xyz;
+
+    # Backend API (Spring) — before location /
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # WebSocket (STOMP / SockJS — adjust if your app uses another path)
+    location /ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+    }
+
+    # SPA (host port 5173 — same as origin location /)
+    location / {
+        proxy_pass http://127.0.0.1:5173;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    listen [::]:443 ssl ipv6only=on; # optional IPv6 HTTPS
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/polymarket-tma.xyz/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/polymarket-tma.xyz/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+
+# API hostname on HTTP (same as origin; add TLS via Certbot if you need https://api…)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.polymarket-tma.xyz;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+}
+
+# HTTP → HTTPS for main hostnames (Certbot-style; both names redirect)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name polymarket-tma.xyz app.polymarket-tma.xyz;
+    return 301 https://$host$request_uri; # managed by Certbot
+}

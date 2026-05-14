@@ -1,0 +1,90 @@
+1. Создать Droplet
+Войди в DigitalOcean → Create → Droplets.
+Выбери образ: Ubuntu 24.04 LTS (или 22.04).
+План: для старта хватит 2 GB RAM / 1 vCPU (можно 4 GB, если хочешь запас под JVM + Postgres).
+Регион: ближе к пользователям (например FRA для Европы).
+Authentication: SSH key (рекомендуется), пароль — только если понимаешь риски.
+Hostname: например polymarket-tma.
+Создай Droplet и запомни публичный IP.
+2. Безопасность и DNS
+В Networking → Firewalls (или в настройках Droplet) открой:
+22/tcp — только с твоего IP (или через DO Console, если без фиксированного IP);
+80/tcp и 443/tcp — для веба.
+У регистратора домена создай A-запись:
+app.tld → IP Droplet (или поддомен api. отдельно — для «одного хоста» достаточно одного имени).
+3. Подготовка сервера
+Подключись по SSH и выполни базовую настройку:
+
+sudo apt update && sudo apt upgrade -y
+Установи Docker (официальный способ Docker CE + плагин Compose — по инструкции Docker для Ubuntu).
+
+Проверка:
+
+docker compose version
+Добавь пользователя в группу docker (чтобы не звать весь стек только через sudo), перелогинься.
+
+4. Код на сервере
+Варианты:
+
+git clone <твой-репозиторий> в каталог вроде /opt/polymarket-tma, или
+git pull при обновлениях.
+5. Переменные окружения (deploy/.env)
+Скопируй пример:
+cd /opt/polymarket-tma/deploy
+cp .env.example .env
+Заполни минимум:
+
+BOT_TOKEN — от BotFather;
+JWT_SECRET — длинная случайная строка;
+POSTGRES_PASSWORD — смени дефолтный polymarket на сильный пароль и то же значение пропиши в docker-compose.yml для POSTGRES_PASSWORD / POSTGRES_USER (или вынеси всё в .env и подставь через compose — сейчас пароль дублируется в compose — проще для первого раза править оба места согласованно);
+APP_PROFILE=prod (в docker-compose для сервиса backend уже есть APP_PROFILE: ${APP_PROFILE:-dev} — задай в .env APP_PROFILE=prod);
+CORS_ALLOWED_ORIGINS — твой HTTPS-оригин фронта, например https://app.example.com, плюс для Telegram удобно держать https://web.telegram.org (как в примере репозитория);
+PRIVY_APP_ID / PRIVY_APP_SECRET — если используешь Privy на бэке;
+POLYGON_RPC_URL — при необходимости.
+Сборка фронта / API URL
+В docker-compose фронт собирается с VITE_API_BASE_URL. Для одного домена (фронт + прокси /api и /ws через nginx во фронт-контейнере) можно оставить пустым VITE_API_BASE_URL в .env — тогда браузер бьёт в тот же origin, а frontend/nginx.conf проксирует на бэкенд внутри Docker-сети.
+
+Privy на фронте
+При сборке образа нужен VITE_PRIVY_APP_ID (и при необходимости VITE_POLYGON_RPC_URL). Сейчас Dockerfile.frontend принимает только VITE_API_BASE_URL. Для продакшена либо:
+
+допиши в deploy/docker-compose.yml в args и в Dockerfile.frontend соответствующие ARG/ENV, либо
+собери фронт отдельно с нужными VITE_* и положи в образ — для полноты деплоя с Privy это нужно согласовать с репо.
+(Если без Privy на проде — можно деплоить как есть.)
+
+6. Порт для фронта и TLS
+Сейчас в compose у фронта 5173:80 — для продакшена удобнее:
+
+пробросить контейнер только на localhost, например 127.0.0.1:8081:80, чтобы снаружи не торчал nginx без HTTPS;
+поставить Caddy (или nginx + certbot) на хосте: принимает :443, выдаёт сертификат Let’s Encrypt, reverse proxy на 127.0.0.1:8081.
+Пример логики Caddy (идея, не файл в репо):
+
+app.example.com {
+  reverse_proxy 127.0.0.1:8081
+}
+У бэкенда не обязательно открывать 8080 наружу, если весь трафик идёт через фронт-nginx /api и /ws.
+
+7. Запуск стека
+Из каталога deploy:
+
+docker compose --profile full up -d --build
+Проверка:
+
+docker compose ps
+curl -sS http://127.0.0.1:8081/actuator/health
+(путь к health уточни под свой бэк — в JAR обычно что-то вроде /actuator/health; если прокси только с /api, проверяй через публичный URL после Caddy.)
+
+8. Telegram
+В BotFather:
+
+Web App URL → https://app.example.com;
+/setdomain → тот же HTTPS-домен.
+9. Обновления
+cd /opt/polymarket-tma && git pull
+cd deploy && docker compose --profile full up -d --build
+10. Альтернатива: только Droplet без «всё в Docker»
+Можно повесить Managed Postgres / Managed Redis в DO и поднять только JAR + nginx — проще бэкапы БД, но дороже. Для сотен пользователей один Droplet + контейнеры обычно достаточно.
+
+Короткий итог
+DigitalOcean Droplet → Docker + Compose (profile full) → сильные секреты в deploy/.env → фронт только на localhost → Caddy с Let’s Encrypt на 443 → домен в BotFather.
+
+Если хочешь, могу следующим сообщением предложить конкретные правки в deploy/docker-compose.yml и Dockerfile.frontend, чтобы VITE_PRIVY_APP_ID нормально собирался на DO без ручных костылей.

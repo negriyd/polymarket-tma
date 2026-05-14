@@ -60,6 +60,8 @@ services:
       args:
         # Baked into the JS bundle at build time. Empty = same-origin `/api` + `/ws` (nginx proxies to backend).
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_PRIVY_APP_ID: ${VITE_PRIVY_APP_ID:-}
+        VITE_POLYGON_RPC_URL: ${VITE_POLYGON_RPC_URL:-https://polygon-rpc.com}
     container_name: polymarket-frontend
     depends_on:
       backend:
