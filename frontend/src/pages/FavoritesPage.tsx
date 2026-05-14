@@ -15,7 +15,7 @@ export function FavoritesPage() {
   });
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-full min-w-0 space-y-4">
       <header className="pt-2">
         <h1 className="text-2xl font-semibold">Saved</h1>
       </header>

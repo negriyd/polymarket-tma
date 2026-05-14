@@ -36,11 +36,11 @@ export function MarketCard({ market, compact }: Props) {
     <Link
       to={`/markets/${market.id ?? market.conditionId}`}
       onClick={() => hapticImpact('light')}
-      className="block"
+      className="block min-w-0 max-w-full"
     >
       <article
         className={clsx(
-          'flex gap-3 rounded-xl bg-tg-secondary p-3 transition active:scale-[0.99]',
+          'flex min-w-0 gap-3 rounded-xl bg-tg-secondary p-3 transition active:scale-[0.99]',
           compact ? 'items-center' : 'items-start',
         )}
       >
@@ -54,12 +54,12 @@ export function MarketCard({ market, compact }: Props) {
         )}
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium text-tg-text">{market.question}</h3>
-          <p className="mt-1 text-xs text-tg-hint">
+          <p className="mt-1 truncate text-xs text-tg-hint">
             Vol {formatVolume(market.volume24h ?? market.volume)} · Liq {formatVolume(market.liquidity)}
           </p>
         </div>
         {yesPct != null && (
-          <div className="text-right">
+          <div className="shrink-0 text-right tabular-nums">
             <div
               className={clsx(
                 'rounded-md px-2 py-1 text-sm font-semibold tabular-nums',

@@ -29,7 +29,7 @@ export function WalletPanel() {
   if (!w.ready) return <Spinner label="Initialising wallet…" />;
 
   return (
-    <div className="space-y-4 pt-2">
+    <div className="max-w-full min-w-0 space-y-4 pt-2">
       <h1 className="text-2xl font-semibold">Wallet</h1>
 
       {!w.authenticated && (

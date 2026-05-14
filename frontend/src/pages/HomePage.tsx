@@ -13,7 +13,7 @@ export function HomePage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-full min-w-0 space-y-5">
       <header className="pt-2">
         <p className="text-sm text-tg-hint">Hi {user?.firstName ?? user?.username ?? 'there'}!</p>
         <h1 className="text-2xl font-semibold">Trending markets</h1>

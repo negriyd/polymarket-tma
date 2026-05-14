@@ -12,6 +12,7 @@ export function MarketDetailPage() {
   const { marketId = '' } = useParams();
   const qc = useQueryClient();
   const [liveEnabled, setLiveEnabled] = useState(false);
+  const [commentsEnabled, setCommentsEnabled] = useState(false);
   const [livePayload, setLivePayload] = useState<unknown>(null);
 
   const market = useQuery({
@@ -23,7 +24,7 @@ export function MarketDetailPage() {
   const comments = useQuery({
     queryKey: ['comments', marketId],
     queryFn: () => api.listMarketComments(marketId, 0, 30),
-    enabled: !!marketId,
+    enabled: !!marketId && commentsEnabled,
   });
 
   const favorites = useQuery({
@@ -84,7 +85,7 @@ export function MarketDetailPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-full min-w-0 space-y-4">
       <Link to="/markets" className="inline-flex items-center text-sm text-tg-hint">
         ← Back
       </Link>
@@ -95,7 +96,7 @@ export function MarketDetailPage() {
             <img src={m.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold leading-snug">{m.question}</h1>
+            <h1 className="break-words text-xl font-semibold leading-snug">{m.question}</h1>
             {m.category && <p className="mt-1 text-xs uppercase tracking-wide text-tg-hint">{m.category}</p>}
           </div>
           <button
@@ -103,7 +104,7 @@ export function MarketDetailPage() {
               hapticImpact('medium');
               toggleFav.mutate();
             }}
-            className="text-2xl"
+            className="shrink-0 text-2xl"
             aria-label={isFavorite ? 'Unsave' : 'Save'}
             disabled={!cid || toggleFav.isPending}
           >
@@ -165,50 +166,77 @@ export function MarketDetailPage() {
       </section>
 
       <section className="rounded-xl bg-tg-secondary p-3">
-        <h2 className="mb-2 text-sm font-semibold text-tg-text">Comments</h2>
-        {comments.isLoading && <p className="text-xs text-tg-hint">Loading comments…</p>}
-        {comments.error && (
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-tg-text">Comments</h2>
           <button
             type="button"
-            className="text-xs text-tg-button underline"
-            onClick={() => comments.refetch()}
+            role="switch"
+            aria-checked={commentsEnabled}
+            onClick={() =>
+              setCommentsEnabled((x) => {
+                const next = !x;
+                if (next) hapticImpact('light');
+                return next;
+              })
+            }
+            className={
+              commentsEnabled
+                ? 'rounded-full bg-tg-button px-3 py-1 text-xs font-medium text-tg-buttonText'
+                : 'rounded-full bg-tg-secondary px-3 py-1 text-xs font-medium text-tg-hint ring-1 ring-tg-hint/30'
+            }
           >
-            Could not load comments — tap to retry
+            {commentsEnabled ? 'On' : 'Off'}
           </button>
-        )}
-        {comments.data && comments.data.length === 0 && !comments.isLoading && (
-          <p className="text-xs text-tg-hint">No comments yet.</p>
-        )}
-        <ul className="mt-1 space-y-3">
-          {comments.data?.map((c) => (
-            <li key={c.id} className="border-t border-tg-hint/10 pt-3 first:border-t-0 first:pt-0">
-              <div className="flex gap-2">
-                {c.authorAvatar ? (
-                  <img
-                    src={c.authorAvatar}
-                    alt=""
-                    className="h-8 w-8 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-tg-hint/20 text-xs font-semibold text-tg-hint">
-                    {(c.author || '?').slice(0, 1).toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
-                    <span className="text-xs font-semibold text-tg-text">{c.author}</span>
-                    {c.createdAt && (
-                      <span className="text-[10px] text-tg-hint">
-                        {new Date(c.createdAt).toLocaleString()}
-                      </span>
+        </div>
+        {!commentsEnabled ? (
+          <p className="mt-2 text-xs text-tg-hint">Turn on to load discussion for this market.</p>
+        ) : (
+          <>
+            {comments.isLoading && <p className="mt-2 text-xs text-tg-hint">Loading comments…</p>}
+            {comments.error && (
+              <button
+                type="button"
+                className="mt-2 text-xs text-tg-button underline"
+                onClick={() => comments.refetch()}
+              >
+                Could not load comments — tap to retry
+              </button>
+            )}
+            {comments.data && comments.data.length === 0 && !comments.isLoading && (
+              <p className="mt-2 text-xs text-tg-hint">No comments yet.</p>
+            )}
+            <ul className="mt-1 space-y-3">
+              {comments.data?.map((c) => (
+                <li key={c.id} className="border-t border-tg-hint/10 pt-3 first:border-t-0 first:pt-0">
+                  <div className="flex gap-2">
+                    {c.authorAvatar ? (
+                      <img
+                        src={c.authorAvatar}
+                        alt=""
+                        className="h-8 w-8 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-tg-hint/20 text-xs font-semibold text-tg-hint">
+                        {(c.author || '?').slice(0, 1).toUpperCase()}
+                      </div>
                     )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+                        <span className="text-xs font-semibold text-tg-text">{c.author}</span>
+                        {c.createdAt && (
+                          <span className="text-[10px] text-tg-hint">
+                            {new Date(c.createdAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 whitespace-pre-wrap text-sm text-tg-text">{c.body}</p>
+                    </div>
                   </div>
-                  <p className="mt-0.5 whitespace-pre-wrap text-sm text-tg-text">{c.body}</p>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </section>
     </div>
   );

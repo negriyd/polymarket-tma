@@ -52,7 +52,7 @@ export function MarketsPage() {
   });
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-full min-w-0 space-y-4">
       <header className="pt-2">
         <h1 className="text-2xl font-semibold">Markets</h1>
       </header>
@@ -60,7 +60,7 @@ export function MarketsPage() {
       <div className="space-y-3">
         <div>
           <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-tg-hint">Topics</p>
-          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex max-w-full gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {MARKET_GROUPS.map((g) => (
               <button
                 key={g.id}
@@ -93,7 +93,7 @@ export function MarketsPage() {
 
         <div>
           <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-tg-hint">Sort</p>
-          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex max-w-full gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {ORDERS.map((o) => (
               <button
                 key={o.value}

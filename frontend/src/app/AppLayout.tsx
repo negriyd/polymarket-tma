@@ -10,8 +10,8 @@ const tabs: { to: string; label: string }[] = [
 
 export function AppLayout() {
   return (
-    <div className="flex h-full flex-col">
-      <main className="flex-1 overflow-y-auto px-4 pb-24 pt-3">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden px-4 pb-24 pt-3">
         <Outlet />
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-black/5 bg-tg-bg/95 backdrop-blur dark:border-white/5">
