@@ -62,8 +62,9 @@ services:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
         VITE_PRIVY_APP_ID: ${VITE_PRIVY_APP_ID:-}
         VITE_POLYGON_RPC_URL: ${VITE_POLYGON_RPC_URL:-https://polygon-rpc.com}
-        # On 2GB RAM hosts set in deploy/.env: NODE_OPTIONS=--max-old-space-size=1536 (and add swap), or build on CI.
-        NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=4096}
+        # Node heap for `vite build` (MB). Do not use NODE_OPTIONS=--... in compose defaults: `:-` eats one `-`.
+        # On a 2GB RAM Droplet set NODE_MEMORY_MB=1536 in deploy/.env (plus swap) or build on CI.
+        NODE_MEMORY_MB: ${NODE_MEMORY_MB:-4096}
     container_name: polymarket-frontend
     depends_on:
       backend:
