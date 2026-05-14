@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useTelegramAuth } from '@/features/auth/useTelegramAuth';
@@ -20,7 +21,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function AuthGate({ children }: { children: React.ReactNode }) {
+function AuthGate({ children }: { children: ReactNode }) {
   useTelegramAuth();
   const status = useAuthStore((s) => s.status);
   const error = useAuthStore((s) => s.error);

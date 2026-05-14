@@ -1,0 +1,2 @@
+App ID    : cmp5e765v00970cjs0zzg0ru2
+App secret: privy_app_secret_3ZXCCHFWpYoqsTaVExtRbXhLqqmiurje4TkCXADSeeAxLNbED8ic2VR6NMoPJjvVqt3Mtr58yF2PTH5a3ufxccDE

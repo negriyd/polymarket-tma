@@ -7,6 +7,8 @@ import { ErrorView } from '@/components/ErrorView';
 import { subscribeToMarket } from '@/lib/ws/stompClient';
 import { hapticImpact } from '@/lib/telegram/webApp';
 import { isPriceChangeMessage } from '@/lib/ws/livePayload';
+import { isWalletConfigured } from '@/features/wallet/useWallet';
+import { MarketTradeSheet } from '@/features/trading/MarketTradeSheet';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
@@ -14,6 +16,8 @@ export function MarketDetailPage() {
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [commentsEnabled, setCommentsEnabled] = useState(false);
   const [livePayload, setLivePayload] = useState<unknown>(null);
+  const [tradeOutcome, setTradeOutcome] = useState<'yes' | 'no' | null>(null);
+  const [privyTradeHint, setPrivyTradeHint] = useState(false);
 
   const market = useQuery({
     queryKey: ['market', marketId],
@@ -74,6 +78,22 @@ export function MarketDetailPage() {
   const noIdx = m.outcomes?.findIndex((o) => o.toLowerCase() === 'no') ?? -1;
   const yesPrice = priceAt(yesIdx >= 0 ? yesIdx : 0);
   const noPrice = priceAt(noIdx >= 0 ? noIdx : 1);
+  const tokens = m.clobTokenIds ?? [];
+  const yesTok = yesIdx >= 0 ? tokens[yesIdx] : tokens[0];
+  const noTok = noIdx >= 0 ? tokens[noIdx] : tokens[1];
+  const canTradeYes = !!yesTok;
+  const canTradeNo = !!noTok;
+
+  const openTrade = (side: 'yes' | 'no') => {
+    hapticImpact('light');
+    if (!isWalletConfigured()) {
+      setPrivyTradeHint(true);
+      return;
+    }
+    const ok = side === 'yes' ? canTradeYes : canTradeNo;
+    if (!ok) return;
+    setTradeOutcome(side);
+  };
 
   const outcomeLabel = (assetId: string) => {
     const tokens = m.clobTokenIds ?? [];
@@ -113,10 +133,48 @@ export function MarketDetailPage() {
         </div>
       </header>
 
+      {privyTradeHint && (
+        <div className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint ring-1 ring-tg-hint/20">
+          Trading needs Privy. Set <code className="text-tg-text">VITE_PRIVY_APP_ID</code> and open the{' '}
+          <Link to="/wallet" className="text-tg-button underline">
+            Wallet
+          </Link>{' '}
+          tab.
+          <button
+            type="button"
+            className="ml-2 text-xs underline"
+            onClick={() => setPrivyTradeHint(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <section className="grid grid-cols-2 gap-2">
-        <PriceTile label="YES" price={yesPrice} accent="emerald" />
-        <PriceTile label="NO" price={noPrice} accent="rose" />
+        <PriceTile
+          label="YES"
+          price={yesPrice}
+          accent="emerald"
+          disabled={!canTradeYes}
+          onPress={() => openTrade('yes')}
+        />
+        <PriceTile
+          label="NO"
+          price={noPrice}
+          accent="rose"
+          disabled={!canTradeNo}
+          onPress={() => openTrade('no')}
+        />
       </section>
+
+      {isWalletConfigured() && tradeOutcome != null && (
+        <MarketTradeSheet
+          market={m}
+          outcome={tradeOutcome}
+          open
+          onClose={() => setTradeOutcome(null)}
+        />
+      )}
 
       <section className="grid grid-cols-3 gap-2">
         <Stat label="Vol 24h" value={fmt(m.volume24hr ?? m.volume24h)} />
@@ -297,14 +355,36 @@ function LiveTradesList({
   );
 }
 
-function PriceTile({ label, price, accent }: { label: string; price?: number; accent: 'emerald' | 'rose' }) {
+function PriceTile({
+  label,
+  price,
+  accent,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  price?: number;
+  accent: 'emerald' | 'rose';
+  onPress?: () => void;
+  disabled?: boolean;
+}) {
   const pct = price == null ? null : Math.round(price * 100);
   const accentClass = accent === 'emerald' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500';
+  const className = `rounded-xl px-3 py-3 text-center ${accentClass} ${
+    onPress && !disabled ? 'cursor-pointer transition active:scale-[0.98]' : ''
+  } ${disabled ? 'opacity-50' : ''}`;
   return (
-    <div className={`rounded-xl px-3 py-3 text-center ${accentClass}`}>
+    <button
+      type="button"
+      className={className}
+      onClick={onPress}
+      disabled={disabled || !onPress}
+      aria-label={disabled || !onPress ? `${label} price` : `Buy ${label}`}
+    >
       <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{pct == null ? '—' : `${pct}%`}</p>
-    </div>
+      {onPress && !disabled && <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">Tap to buy</p>}
+    </button>
   );
 }
 
