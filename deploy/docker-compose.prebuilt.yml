@@ -1,0 +1,76 @@
+# Stack with pre-built app images (no `build:` on server).
+#
+# On the server (after `docker login` if the registry is private):
+#   cd deploy
+#   # In .env: secrets + BACKEND_IMAGE / FRONTEND_IMAGE (see .env.prebuilt.example)
+#   docker compose -f docker-compose.prebuilt.yml --env-file .env --profile full pull
+#   docker compose -f docker-compose.prebuilt.yml --env-file .env --profile full up -d
+#
+# Local one-liner if .env already defines BACKEND_IMAGE / FRONTEND_IMAGE:
+#   docker compose -f docker-compose.prebuilt.yml --profile full up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: polymarket-postgres
+    environment:
+      POSTGRES_DB: polymarket_tma
+      POSTGRES_USER: polymarket
+      POSTGRES_PASSWORD: polymarket
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polymarket"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: polymarket-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE in .env, e.g. docker.io/youruser/polymarket-tma-backend:1.0.0}
+    container_name: polymarket-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      APP_PROFILE: ${APP_PROFILE:-dev}
+      POSTGRES_URL: jdbc:postgresql://postgres:5432/polymarket_tma
+      POSTGRES_USER: polymarket
+      POSTGRES_PASSWORD: polymarket
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8080:8080"
+    profiles: ["full"]
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE in .env, e.g. docker.io/youruser/polymarket-tma-frontend:1.0.0}
+    container_name: polymarket-frontend
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "5173:80"
+    profiles: ["full"]
+
+volumes:
+  pgdata:
+  redisdata:
