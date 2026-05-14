@@ -14,6 +14,9 @@ ARG VITE_PRIVY_APP_ID
 ENV VITE_PRIVY_APP_ID=$VITE_PRIVY_APP_ID
 ARG VITE_POLYGON_RPC_URL
 ENV VITE_POLYGON_RPC_URL=$VITE_POLYGON_RPC_URL
+# Vite + Privy bundle is heavy; default Node heap can OOM on a small VPS (override build-arg NODE_OPTIONS).
+ARG NODE_OPTIONS=--max-old-space-size=4096
+ENV NODE_OPTIONS=$NODE_OPTIONS
 RUN pnpm build
 
 FROM nginx:1.27-alpine
