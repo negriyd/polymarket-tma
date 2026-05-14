@@ -47,6 +47,14 @@ export interface MarketList {
   hasMore: boolean;
 }
 
+export interface MarketComment {
+  id: string;
+  body: string;
+  author: string;
+  authorAvatar?: string | null;
+  createdAt?: string | null;
+}
+
 export interface OrderbookLevel {
   price: number;
   size: number;

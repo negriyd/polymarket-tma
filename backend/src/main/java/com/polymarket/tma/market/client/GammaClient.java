@@ -2,12 +2,16 @@ package com.polymarket.tma.market.client;
 
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.polymarket.tma.market.dto.CommentDto;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.dto.PriceHistoryDto;
 import com.polymarket.tma.market.dto.gamma.PublicSearchResponse;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -182,6 +186,122 @@ public class GammaClient {
                 .bodyToMono(PriceHistoryDto.class)
                 .retryWhen(retrySpec("getPriceHistory"))
                 .doOnError(e -> log.warn("Gamma getPriceHistory({}) failed: {}", tokenId, e.toString()));
+    }
+
+    /**
+     * Resolves Polymarket <strong>event</strong> id for comments — Gamma attaches comments to {@code Event},
+     * not {@code market}. Uses {@code GET /markets?condition_ids=…} which includes embedded {@code events}.
+     */
+    public Mono<String> resolveEventIdForCondition(String conditionId) {
+        if (conditionId == null || conditionId.isBlank()) {
+            return Mono.empty();
+        }
+        return client.get()
+                .uri(uri -> uri.path("/markets")
+                        .queryParam("condition_ids", conditionId)
+                        .queryParam("limit", 1)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapError)
+                .bodyToMono(JsonNode.class)
+                .map(GammaClient::firstEventIdFromMarketsResponse)
+                .filter(id -> id != null && !id.isBlank())
+                .retryWhen(retrySpec("resolveEventId"))
+                .doOnError(e -> log.warn("Gamma resolveEventIdForCondition failed: {}", e.toString()));
+    }
+
+    /**
+     * @param ascending {@code false} = newest first (typical for comment threads).
+     */
+    public Mono<List<CommentDto>> listEventComments(int eventId, int limit, int offset, boolean ascending) {
+        if (eventId <= 0) {
+            return Mono.just(Collections.emptyList());
+        }
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        int safeOffset = Math.max(0, offset);
+        return client.get()
+                .uri(uri -> uri.path("/comments")
+                        .queryParam("limit", safeLimit)
+                        .queryParam("offset", safeOffset)
+                        .queryParam("parent_entity_type", "Event")
+                        .queryParam("parent_entity_id", eventId)
+                        .queryParam("ascending", ascending)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapError)
+                .bodyToMono(new ParameterizedTypeReference<List<JsonNode>>() {})
+                .map(GammaClient::mapComments)
+                .defaultIfEmpty(Collections.emptyList())
+                .retryWhen(retrySpec("listEventComments"))
+                .doOnError(e -> log.warn("Gamma listEventComments failed: {}", e.toString()));
+    }
+
+    private static String firstEventIdFromMarketsResponse(JsonNode root) {
+        if (root == null || !root.isArray() || root.size() == 0) {
+            return null;
+        }
+        JsonNode events = root.get(0).path("events");
+        if (!events.isArray() || events.size() == 0) {
+            return null;
+        }
+        JsonNode idNode = events.get(0).get("id");
+        return idNode == null || idNode.isNull() ? null : idNode.asText();
+    }
+
+    private static List<CommentDto> mapComments(List<JsonNode> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return List.of();
+        }
+        List<CommentDto> out = new ArrayList<>(nodes.size());
+        for (JsonNode n : nodes) {
+            CommentDto c = mapOneComment(n);
+            if (c != null) {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+
+    private static CommentDto mapOneComment(JsonNode n) {
+        if (n == null || n.isNull()) {
+            return null;
+        }
+        String id = textOrNull(n, "id");
+        String body = textOrNull(n, "body");
+        if (id == null) {
+            return null;
+        }
+        Instant created = parseInstant(textOrNull(n, "createdAt"));
+        JsonNode profile = n.path("profile");
+        String name = textOrNull(profile, "name");
+        String pseudonym = textOrNull(profile, "pseudonym");
+        String author = name != null && !name.isBlank() ? name
+                : (pseudonym != null && !pseudonym.isBlank() ? pseudonym : "Anonymous");
+        String avatar = textOrNull(profile, "profileImage");
+        return new CommentDto(id, body != null ? body : "", author, avatar, created);
+    }
+
+    private static String textOrNull(JsonNode n, String field) {
+        if (n == null || n.isMissingNode() || n.isNull()) {
+            return null;
+        }
+        JsonNode v = n.get(field);
+        if (v == null || v.isNull() || v.isMissingNode()) {
+            return null;
+        }
+        String s = v.asText();
+        return s.isBlank() ? null : s;
+    }
+
+    private static Instant parseInstant(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(raw);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static java.net.URI buildListUri(UriBuilder uri, int limit, int offset, String order,

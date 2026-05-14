@@ -1,9 +1,11 @@
 package com.polymarket.tma.market;
 
+import com.polymarket.tma.market.dto.CommentDto;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.dto.MarketListResponse;
 import com.polymarket.tma.market.dto.OrderbookDto;
 import com.polymarket.tma.market.dto.PriceHistoryDto;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,6 +37,14 @@ public class MarketController {
     @GetMapping("/{conditionId}")
     public Mono<MarketDto> get(@PathVariable String conditionId) {
         return service.get(conditionId);
+    }
+
+    @GetMapping("/{marketKey}/comments")
+    public Mono<List<CommentDto>> comments(
+            @PathVariable String marketKey,
+            @RequestParam(defaultValue = "30") int size,
+            @RequestParam(defaultValue = "0") int page) {
+        return service.comments(marketKey, size, page * size);
     }
 
     @GetMapping("/{conditionId}/orderbook")

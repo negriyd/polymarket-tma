@@ -1,7 +1,5 @@
-import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { bootstrapTelegram } from '@/lib/telegram/webApp';
 import { useTelegramAuth } from '@/features/auth/useTelegramAuth';
 import { useAuthStore } from '@/features/auth/store';
 import { AppLayout } from './AppLayout';
@@ -45,10 +43,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
-  useEffect(() => {
-    bootstrapTelegram();
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <WalletProvider>

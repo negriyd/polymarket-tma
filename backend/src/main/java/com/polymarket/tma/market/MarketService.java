@@ -4,10 +4,12 @@ import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.market.client.ClobClient;
 import com.polymarket.tma.market.client.GammaClient;
+import com.polymarket.tma.market.dto.CommentDto;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.dto.MarketListResponse;
 import com.polymarket.tma.market.dto.OrderbookDto;
 import com.polymarket.tma.market.dto.PriceHistoryDto;
+import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
@@ -82,5 +84,28 @@ public class MarketService {
         String key = "pm:history:" + tokenId + ":" + safeInterval;
         return cache.readThrough(key, PriceHistoryDto.class, props.polymarket().historyCacheTtl(),
                 gamma.getPriceHistory(tokenId, safeInterval));
+    }
+
+    /** Polymarket comments are on the parent {@code Event}; resolved via Gamma using the market's condition id. */
+    public Mono<List<CommentDto>> comments(String marketKey, int limit, int offset) {
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        int safeOffset = Math.max(0, offset);
+        return resolveConditionId(marketKey)
+                .flatMap(gamma::resolveEventIdForCondition)
+                .flatMap(eid -> {
+                    try {
+                        return gamma.listEventComments(Integer.parseInt(eid), safeLimit, safeOffset, false);
+                    } catch (NumberFormatException e) {
+                        return Mono.just(Collections.<CommentDto>emptyList());
+                    }
+                })
+                .switchIfEmpty(Mono.just(Collections.emptyList()));
+    }
+
+    private Mono<String> resolveConditionId(String marketKey) {
+        if (isHexConditionId(marketKey)) {
+            return Mono.just(marketKey);
+        }
+        return get(marketKey).map(MarketDto::conditionId);
     }
 }

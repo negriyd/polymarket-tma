@@ -3,6 +3,7 @@ import type {
   Favorite,
   Market,
   MarketList,
+  MarketComment,
   Orderbook,
   Position,
   PriceHistory,
@@ -32,6 +33,13 @@ export const api = {
 
   getMarket: (marketKey: string) =>
     http.get<Market>(`/api/markets/${marketKey}`).then((r) => r.data),
+
+  listMarketComments: (marketKey: string, page = 0, size = 30) =>
+    http
+      .get<MarketComment[]>(`/api/markets/${encodeURIComponent(marketKey)}/comments`, {
+        params: { page, size },
+      })
+      .then((r) => r.data),
 
   getOrderbook: (conditionId: string, tokenId: string) =>
     http

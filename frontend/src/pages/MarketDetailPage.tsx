@@ -6,15 +6,23 @@ import { Spinner } from '@/components/Spinner';
 import { ErrorView } from '@/components/ErrorView';
 import { subscribeToMarket } from '@/lib/ws/stompClient';
 import { hapticImpact } from '@/lib/telegram/webApp';
+import { isPriceChangeMessage } from '@/lib/ws/livePayload';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
   const qc = useQueryClient();
+  const [liveEnabled, setLiveEnabled] = useState(false);
   const [livePayload, setLivePayload] = useState<unknown>(null);
 
   const market = useQuery({
     queryKey: ['market', marketId],
     queryFn: () => api.getMarket(marketId),
+    enabled: !!marketId,
+  });
+
+  const comments = useQuery({
+    queryKey: ['comments', marketId],
+    queryFn: () => api.listMarketComments(marketId, 0, 30),
     enabled: !!marketId,
   });
 
@@ -35,19 +43,22 @@ export function MarketDetailPage() {
   });
 
   useEffect(() => {
-    if (!cid) return;
+    if (!cid || !liveEnabled) {
+      setLivePayload(null);
+      return;
+    }
     let cleanup: (() => void) | null = null;
-    subscribeToMarket(cid, (msg) => setLivePayload(msg))
+    subscribeToMarket(cid.toLowerCase(), (msg) => setLivePayload(msg))
       .then((c) => {
         cleanup = c;
       })
       .catch(() => {
-        /* WS unavailable - fall back to polling via REST query */
+        /* WS unavailable */
       });
     return () => {
       cleanup?.();
     };
-  }, [cid]);
+  }, [cid, liveEnabled]);
 
   if (market.isLoading) return <Spinner label="Loading market…" />;
   if (market.error || !market.data)
@@ -62,6 +73,15 @@ export function MarketDetailPage() {
   const noIdx = m.outcomes?.findIndex((o) => o.toLowerCase() === 'no') ?? -1;
   const yesPrice = priceAt(yesIdx >= 0 ? yesIdx : 0);
   const noPrice = priceAt(noIdx >= 0 ? noIdx : 1);
+
+  const outcomeLabel = (assetId: string) => {
+    const tokens = m.clobTokenIds ?? [];
+    const outcomes = m.outcomes ?? [];
+    const idx = tokens.findIndex((t) => t === assetId);
+    if (idx >= 0 && outcomes[idx]) return outcomes[idx];
+    const short = assetId.length > 12 ? `${assetId.slice(0, 6)}…${assetId.slice(-4)}` : assetId;
+    return `Outcome ${short}`;
+  };
 
   return (
     <div className="space-y-4">
@@ -110,16 +130,141 @@ export function MarketDetailPage() {
         </section>
       )}
 
-      <section className="rounded-xl bg-tg-secondary p-3 text-xs text-tg-hint">
-        <p className="mb-1 font-medium text-tg-text">Live stream</p>
-        {livePayload ? (
-          <pre className="max-h-32 overflow-auto text-[10px] leading-tight">
-            {JSON.stringify(livePayload, null, 2)}
-          </pre>
+      <section className="rounded-xl bg-tg-secondary p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-tg-text">Live trades</h2>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={liveEnabled}
+            onClick={() => setLiveEnabled((x) => !x)}
+            className={
+              liveEnabled
+                ? 'rounded-full bg-tg-button px-3 py-1 text-xs font-medium text-tg-buttonText'
+                : 'rounded-full bg-tg-secondary px-3 py-1 text-xs font-medium text-tg-hint ring-1 ring-tg-hint/30'
+            }
+          >
+            {liveEnabled ? 'On' : 'Off'}
+          </button>
+        </div>
+        {!liveEnabled ? (
+          <p className="mt-2 text-xs text-tg-hint">
+            Turn on to stream recent order-book activity for this market (uses WebSocket).
+          </p>
+        ) : isPriceChangeMessage(livePayload) ? (
+          <LiveTradesList
+            message={livePayload}
+            outcomeLabel={outcomeLabel}
+            ts={livePayload.timestamp}
+          />
+        ) : livePayload != null ? (
+          <p className="mt-2 text-xs text-tg-hint">Received an update we don&apos;t render yet.</p>
         ) : (
-          <p>Waiting for updates…</p>
+          <p className="mt-2 text-xs text-tg-hint">Connecting… waiting for the first update.</p>
         )}
       </section>
+
+      <section className="rounded-xl bg-tg-secondary p-3">
+        <h2 className="mb-2 text-sm font-semibold text-tg-text">Comments</h2>
+        {comments.isLoading && <p className="text-xs text-tg-hint">Loading comments…</p>}
+        {comments.error && (
+          <button
+            type="button"
+            className="text-xs text-tg-button underline"
+            onClick={() => comments.refetch()}
+          >
+            Could not load comments — tap to retry
+          </button>
+        )}
+        {comments.data && comments.data.length === 0 && !comments.isLoading && (
+          <p className="text-xs text-tg-hint">No comments yet.</p>
+        )}
+        <ul className="mt-1 space-y-3">
+          {comments.data?.map((c) => (
+            <li key={c.id} className="border-t border-tg-hint/10 pt-3 first:border-t-0 first:pt-0">
+              <div className="flex gap-2">
+                {c.authorAvatar ? (
+                  <img
+                    src={c.authorAvatar}
+                    alt=""
+                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-tg-hint/20 text-xs font-semibold text-tg-hint">
+                    {(c.author || '?').slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+                    <span className="text-xs font-semibold text-tg-text">{c.author}</span>
+                    {c.createdAt && (
+                      <span className="text-[10px] text-tg-hint">
+                        {new Date(c.createdAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 whitespace-pre-wrap text-sm text-tg-text">{c.body}</p>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
+
+function LiveTradesList({
+  message,
+  outcomeLabel,
+  ts,
+}: {
+  message: import('@/lib/ws/livePayload').PriceChangeMessage;
+  outcomeLabel: (assetId: string) => string;
+  ts?: string;
+}) {
+  const timeLabel =
+    ts != null && ts !== ''
+      ? (() => {
+          const n = Number(ts);
+          if (!Number.isFinite(n)) return null;
+          const ms = n > 1e12 ? n : n * 1000;
+          return new Date(ms).toLocaleTimeString();
+        })()
+      : null;
+
+  return (
+    <div className="mt-2 space-y-2">
+      {timeLabel && <p className="text-[10px] uppercase tracking-wide text-tg-hint">Updated {timeLabel}</p>}
+      <ul className="space-y-2">
+        {message.price_changes?.map((ch, i) => {
+          const side = ch.side?.toUpperCase() === 'BUY' ? 'Buy' : 'Sell';
+          const pct = (Number(ch.price) * 100).toFixed(1);
+          const bid = ch.best_bid != null ? (Number(ch.best_bid) * 100).toFixed(1) : null;
+          const ask = ch.best_ask != null ? (Number(ch.best_ask) * 100).toFixed(1) : null;
+          return (
+            <li
+              key={ch.hash ?? `${ch.asset_id}-${i}`}
+              className="rounded-lg bg-tg-bg/40 px-2 py-2 text-xs text-tg-text ring-1 ring-tg-hint/10"
+            >
+              <span className="font-medium text-tg-text">{outcomeLabel(ch.asset_id)}</span>
+              <span className="text-tg-hint"> · </span>
+              <span className={side === 'Buy' ? 'text-emerald-500' : 'text-rose-500'}>{side}</span>
+              <span className="text-tg-hint"> · </span>
+              <span className="tabular-nums">{pct}%</span>
+              <span className="text-tg-hint"> @ size </span>
+              <span className="tabular-nums">{ch.size}</span>
+              {(bid != null || ask != null) && (
+                <span className="mt-1 block text-[10px] text-tg-hint">
+                  Book {bid != null ? `bid ${bid}%` : ''}
+                  {bid != null && ask != null ? ' · ' : ''}
+                  {ask != null ? `ask ${ask}%` : ''}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

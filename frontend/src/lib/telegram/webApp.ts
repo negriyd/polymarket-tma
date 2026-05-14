@@ -41,15 +41,28 @@ export function applyTelegramTheme(): ColorScheme {
   return scheme;
 }
 
-export function bootstrapTelegram(): void {
+/**
+ * Signals to Telegram that the Mini App scripts have loaded — the client hides its loading spinner.
+ * Must run early (sync in {@code main.tsx}); React {@code useEffect} can be too late if the tree
+ * blocks/suspends on first paint.
+ */
+export function announceTelegramReady(): void {
   try {
     WebApp.ready();
     WebApp.expand();
   } catch {
-    /* outside Telegram - ignore */
+    /* opened outside Telegram */
   }
-  applyTelegramTheme();
-  WebApp.onEvent('themeChanged', applyTelegramTheme);
+}
+
+export function bootstrapTelegram(): void {
+  announceTelegramReady();
+  try {
+    applyTelegramTheme();
+    WebApp.onEvent('themeChanged', applyTelegramTheme);
+  } catch {
+    /* SDK may not expose all APIs outside Telegram WebView */
+  }
 }
 
 export function hapticImpact(style: 'light' | 'medium' | 'heavy' = 'light'): void {
