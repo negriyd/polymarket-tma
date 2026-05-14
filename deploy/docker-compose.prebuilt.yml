@@ -42,7 +42,7 @@ services:
       retries: 10
 
   backend:
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE in .env, e.g. docker.io/youruser/polymarket-tma-backend:1.0.0}
+    image: docker.io/negriyd/polymarket-tma-backend:latest
     container_name: polymarket-backend
     depends_on:
       postgres:
@@ -62,7 +62,7 @@ services:
     profiles: ["full"]
 
   frontend:
-    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE in .env, e.g. docker.io/youruser/polymarket-tma-frontend:1.0.0}
+    image: docker.io/negriyd/polymarket-tma-frontend:latest
     container_name: polymarket-frontend
     depends_on:
       backend:
