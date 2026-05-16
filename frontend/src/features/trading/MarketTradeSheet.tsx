@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth';
 import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError, Market } from '@/lib/api/types';
+import type { ApiError, Market, OrderSignatureType } from '@/lib/api/types';
 import { useWallet } from '@/features/wallet/useWallet';
 import { hapticImpact } from '@/lib/telegram/webApp';
 
@@ -49,13 +49,17 @@ interface Props {
   outcome: OutcomeSide;
   open: boolean;
   onClose: () => void;
+  /** Default EOA. Use {@code POLY_PROXY} (or {@code POLY_GNOSIS_SAFE}) when funds sit on a proxy. */
+  signatureType?: OrderSignatureType;
+  /** Required when {@link signatureType} is not EOA. The wallet signs, but maker holds the funds. */
+  makerAddress?: string;
 }
 
 /**
  * Trading sheet: prepare → Privy EIP-712 sign → submit.
  * Only mount when `VITE_PRIVY_APP_ID` is set (inside `WalletProvider`).
  */
-export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
+export function MarketTradeSheet({ market, outcome, open, onClose, signatureType, makerAddress }: Props) {
   const qc = useQueryClient();
   const w = useWallet();
   const { signTypedData } = useSignTypedData();
@@ -119,17 +123,35 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
         side: 'BUY',
         price: p,
         size: sizeRounded,
+        signatureType,
+        makerAddress,
       });
 
       const { signature } = await signTypedData(prep.typedData as SignTypedDataParams, {
         address: w.address,
       });
 
-      return api.submitOrder({
-        orderHash: prep.orderHash,
-        signature,
-        idempotency_key: crypto.randomUUID(),
-      });
+      try {
+        return await api.submitOrder({
+          orderHash: prep.orderHash,
+          signature,
+          idempotency_key: crypto.randomUUID(),
+        });
+      } catch (e) {
+        if (
+          e instanceof AxiosError &&
+          (e.response?.status === 401 || e.response?.status === 403)
+        ) {
+          // CLOB likely rejected the request because the L2 credentials expired/are missing.
+          // Revoke locally so the wallet page prompts to re-connect Polymarket trading.
+          try {
+            await api.clobAuthRevoke();
+          } catch {
+            /* best effort */
+          }
+        }
+        throw e;
+      }
     },
     onSuccess: (sub) => {
       setSuccess(`Order ${sub.status}${sub.orderId ? ` · ${sub.orderId.slice(0, 10)}…` : ''}`);

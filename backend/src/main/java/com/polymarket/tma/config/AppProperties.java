@@ -42,7 +42,8 @@ public record AppProperties(
     public record Polygon(
             String rpcUrl,
             String usdcAddress,
-            String ctfExchangeAddress
+            String ctfExchangeAddress,
+            String ctfAddress
     ) {}
 
     public record Privy(String appId, String appSecret) {}

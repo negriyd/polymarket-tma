@@ -78,6 +78,8 @@ app:
     rpc-url: ${POLYGON_RPC_URL:https://polygon-rpc.com}
     usdc-address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
     ctf-exchange-address: "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
+    # Polymarket Conditional Tokens (ERC-1155) on Polygon
+    ctf-address: "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
   privy:
     app-id: ${PRIVY_APP_ID:}
     app-secret: ${PRIVY_APP_SECRET:}

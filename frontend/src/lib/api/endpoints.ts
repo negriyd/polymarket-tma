@@ -1,9 +1,13 @@
 import { http } from './client';
 import type {
+  ApprovalStatus,
+  ClobAuthPrepareResponse,
+  ClobAuthStatus,
   Favorite,
   Market,
   MarketList,
   MarketComment,
+  OrderSignatureType,
   Orderbook,
   Position,
   PriceHistory,
@@ -70,6 +74,8 @@ export const api = {
     side: 'BUY' | 'SELL';
     price: number;
     size: number;
+    signatureType?: OrderSignatureType;
+    makerAddress?: string;
   }) => http.post<TypedDataResponse>('/api/orders/prepare', body).then((r) => r.data),
 
   submitOrder: (body: { orderHash: string; signature: string; idempotency_key?: string }) =>
@@ -77,4 +83,21 @@ export const api = {
 
   cancelOrder: (orderId: string) =>
     http.delete(`/api/orders/${orderId}`).then(() => undefined),
+
+  /** L1 derivation flow: prepare → sign typedData with Privy → submit { signature, timestamp, nonce }. */
+  clobAuthPrepare: () =>
+    http.post<ClobAuthPrepareResponse>('/api/clob/auth/prepare').then((r) => r.data),
+
+  clobAuthSubmit: (body: { signature: string; timestamp: number; nonce: number }) =>
+    http.post<ClobAuthStatus>('/api/clob/auth/submit', body).then((r) => r.data),
+
+  clobAuthStatus: () =>
+    http.get<ClobAuthStatus>('/api/clob/auth/status').then((r) => r.data),
+
+  clobAuthRevoke: () =>
+    http.delete('/api/clob/auth').then(() => undefined),
+
+  /** Returns USDC + CTF approval state and a list of unsigned txs the wallet should broadcast. */
+  getApprovals: () =>
+    http.get<ApprovalStatus>('/api/wallet/approvals').then((r) => r.data),
 };

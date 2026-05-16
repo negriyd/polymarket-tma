@@ -105,3 +105,41 @@ export interface ApiError {
   timestamp: string;
   traceId?: string;
 }
+
+/** L1 prepare response — wallet signs `typedData`, then submits with the echoed timestamp/nonce. */
+export interface ClobAuthPrepareResponse {
+  address: string;
+  timestamp: number;
+  nonce: number;
+  digestHex: string;
+  typedData: Record<string, unknown>;
+}
+
+export interface ClobAuthStatus {
+  configured: boolean;
+}
+
+export interface ApprovalUnsignedTx {
+  kind: 'USDC_APPROVE' | 'CTF_SET_APPROVAL_FOR_ALL';
+  to: string;
+  data: string;
+  value: string;
+  chainId: number;
+}
+
+export interface ApprovalAllowanceState {
+  spender: string;
+  allowance: string | null;
+  approvedForAll: boolean;
+  approvedForAllKnown: boolean | null;
+}
+
+export interface ApprovalStatus {
+  wallet: string;
+  spender: string;
+  usdc: ApprovalAllowanceState;
+  ctf: ApprovalAllowanceState;
+  missing: ApprovalUnsignedTx[];
+}
+
+export type OrderSignatureType = 'EOA' | 'POLY_PROXY' | 'POLY_GNOSIS_SAFE';

@@ -4,6 +4,8 @@ import com.polymarket.tma.auth.entity.AppUser;
 import com.polymarket.tma.auth.repo.AppUserRepository;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.trading.OrderBuilder.BuiltOrder;
+import com.polymarket.tma.trading.clob.ClobCredentials;
+import com.polymarket.tma.trading.clob.ClobCredentialsStore;
 import com.polymarket.tma.trading.dto.OrderDtos;
 import com.polymarket.tma.trading.entity.OrderAudit;
 import com.polymarket.tma.trading.repo.OrderAuditRepository;
@@ -23,17 +25,20 @@ public class TradingService {
     private final AppUserRepository userRepo;
     private final OrderAuditRepository auditRepo;
     private final ClobOrderClient clob;
+    private final ClobCredentialsStore credentialsStore;
 
     public TradingService(OrderBuilder builder,
                           PendingOrderCache pending,
                           AppUserRepository userRepo,
                           OrderAuditRepository auditRepo,
-                          ClobOrderClient clob) {
+                          ClobOrderClient clob,
+                          ClobCredentialsStore credentialsStore) {
         this.builder = builder;
         this.pending = pending;
         this.userRepo = userRepo;
         this.auditRepo = auditRepo;
         this.clob = clob;
+        this.credentialsStore = credentialsStore;
     }
 
     public OrderDtos.TypedDataResponse prepare(long userId, OrderDtos.PrepareOrderRequest req) {
@@ -43,9 +48,37 @@ public class TradingService {
             throw ApiException.badRequest("WALLET_REQUIRED",
                     "Wallet address must be set on profile before preparing orders");
         }
-        BuiltOrder built = builder.build(user.getWalletAddress(), req);
+        String signer = user.getWalletAddress();
+        String maker = resolveMaker(user, req);
+        BuiltOrder built = builder.build(maker, signer, req);
         pending.put(userId, built);
         return new OrderDtos.TypedDataResponse(built.orderHash(), built.typedData());
+    }
+
+    /**
+     * Resolve the {@code maker} for the EIP-712 order:
+     * <ul>
+     *     <li>{@link OrderDtos.SignatureType#EOA} (default): always the wallet address (maker == signer).</li>
+     *     <li>{@code POLY_PROXY} / {@code POLY_GNOSIS_SAFE}: requires {@code makerAddress} in the request
+     *         (the Polymarket proxy / Safe holding the funds). It must differ from the signer.</li>
+     * </ul>
+     */
+    private static String resolveMaker(AppUser user, OrderDtos.PrepareOrderRequest req) {
+        OrderDtos.SignatureType type = req.signatureType() == null
+                ? OrderDtos.SignatureType.EOA
+                : req.signatureType();
+        if (type == OrderDtos.SignatureType.EOA) {
+            return user.getWalletAddress();
+        }
+        if (req.makerAddress() == null || req.makerAddress().isBlank()) {
+            throw ApiException.badRequest("MAKER_REQUIRED",
+                    "makerAddress is required for signatureType=" + type);
+        }
+        if (req.makerAddress().equalsIgnoreCase(user.getWalletAddress())) {
+            throw ApiException.badRequest("MAKER_EQUALS_SIGNER",
+                    "makerAddress must differ from the wallet for signatureType=" + type);
+        }
+        return req.makerAddress();
     }
 
     @Transactional
@@ -62,6 +95,9 @@ public class TradingService {
             throw ApiException.notFound("ORDER_NOT_FOUND",
                     "Prepared order is not in cache (expired or unknown). Re-prepare.");
         }
+        AppUser user = userRepo.findById(userId)
+                .orElseThrow(() -> ApiException.unauthorized("USER_GONE", "User not found"));
+        ClobCredentials creds = credentialsStore.get(userId);
 
         OrderAudit audit = new OrderAudit();
         audit.setUserId(userId);
@@ -74,7 +110,7 @@ public class TradingService {
         audit.setIdempotencyKey(req.idempotencyKey());
         auditRepo.save(audit);
 
-        return clob.submit(built, req.signature())
+        return clob.submit(built, req.signature(), user.getWalletAddress(), creds)
                 .doOnSuccess(resp -> {
                     audit.setStatus(resp.status());
                     auditRepo.save(audit);

@@ -23,7 +23,9 @@ public final class OrderDtos {
             @NotNull @Positive BigDecimal size,     // outcome shares
             OrderType orderType,
             SignatureType signatureType,
-            Long expiration                          // unix seconds, optional
+            Long expiration,                         // unix seconds, optional
+            /** Optional. Required when {@link #signatureType} is not {@link SignatureType#EOA}. */
+            String makerAddress
     ) {}
 
     /** EIP-712 typed data the client must sign with its Privy wallet. */

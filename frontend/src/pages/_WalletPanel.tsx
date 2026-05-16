@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useWallet } from '@/features/wallet/useWallet';
+import { ClobAuthSection } from '@/features/wallet/ClobAuthSection';
+import { ApprovalsSection } from '@/features/wallet/ApprovalsSection';
 import { Spinner } from '@/components/Spinner';
 import { api } from '@/lib/api/endpoints';
 
@@ -53,6 +55,9 @@ export function WalletPanel() {
               {w.usdcLoading ? '…' : (w.usdcBalance?.formatted ?? '0')} USDC
             </p>
           </section>
+
+          <ClobAuthSection walletAddress={w.address} />
+          <ApprovalsSection walletAddress={w.address} />
 
           <section className="space-y-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-tg-hint">Positions</h2>
