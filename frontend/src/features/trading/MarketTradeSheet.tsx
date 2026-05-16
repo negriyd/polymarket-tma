@@ -178,6 +178,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
           idempotency_key: crypto.randomUUID(),
         });
       } catch (e) {
+        console.error('Order submit failed:', e);
         if (
           e instanceof AxiosError &&
           (e.response?.status === 401 || e.response?.status === 403)

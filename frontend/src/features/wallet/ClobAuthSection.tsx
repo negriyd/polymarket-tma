@@ -83,17 +83,24 @@ export function ClobAuthSection({ walletAddress }: Props) {
           console.warn('Privy wallet.switchChain(137) failed:', err);
         }
       }
+      let signature: string;
       try {
-        const { signature } = await signTypedData(prep.typedData as SignTypedDataParams, {
+        const res = await signTypedData(prep.typedData as SignTypedDataParams, {
           address: walletAddress,
         });
+        signature = res.signature;
+      } catch (err) {
+        console.error('Privy signTypedData failed for ClobAuth:', err, prep.typedData);
+        throw err;
+      }
+      try {
         return await api.clobAuthSubmit({
           signature,
           timestamp: prep.timestamp,
           nonce: prep.nonce,
         });
       } catch (err) {
-        console.error('Privy signTypedData failed for ClobAuth:', err, prep.typedData);
+        console.error('CLOB auth submit failed:', err);
         throw err;
       }
     },

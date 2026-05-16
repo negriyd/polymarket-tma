@@ -21,6 +21,11 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    optimizeDeps: {
+      // Without explicit pre-bundling Vite treats `buffer` as a Node built-in and emits an empty
+      // browser-external stub, which causes Privy's signing flow to fail with "Buffer is not defined".
+      include: ['buffer'],
+    },
     server: {
       host: '0.0.0.0',
       port: 5173,
