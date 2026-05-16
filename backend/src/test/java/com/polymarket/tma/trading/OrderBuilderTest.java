@@ -64,7 +64,8 @@ class OrderBuilderTest {
         @SuppressWarnings("unchecked")
         var domain = (java.util.Map<String, Object>) built.typedData().get("domain");
 
-        assertThat(domain.get("chainId")).isInstanceOf(String.class).isEqualTo("137");
+        assertThat(domain.get("chainId")).isInstanceOf(Number.class);
+        assertThat(((Number) domain.get("chainId")).longValue()).isEqualTo(137L);
 
         assertThat(message.get("salt")).isInstanceOf(String.class);
         assertThat(message.get("tokenId")).isInstanceOf(String.class).isEqualTo(HUGE_TOKEN_ID);
@@ -79,7 +80,9 @@ class OrderBuilderTest {
         JsonNode root = objectMapper.readTree(objectMapper.writeValueAsBytes(built.typedData()));
         assertThat(root.get("message").get("tokenId").isTextual()).isTrue();
         assertThat(root.get("message").get("tokenId").asText()).isEqualTo(HUGE_TOKEN_ID);
-        assertThat(root.get("domain").get("chainId").isTextual()).isTrue();
+        // Privy validates chainId as a JSON number — must NOT be a string.
+        assertThat(root.get("domain").get("chainId").isNumber()).isTrue();
+        assertThat(root.get("domain").get("chainId").asLong()).isEqualTo(137L);
     }
 
     @Test

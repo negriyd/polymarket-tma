@@ -25,6 +25,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   useTelegramAuth();
   const status = useAuthStore((s) => s.status);
   const error = useAuthStore((s) => s.error);
+  const reset = useAuthStore((s) => s.reset);
   if (status === 'authenticated') return <>{children}</>;
   if (status === 'error') {
     return (
@@ -32,6 +33,13 @@ function AuthGate({ children }: { children: ReactNode }) {
         <div>
           <p className="text-lg font-semibold">Authentication failed</p>
           <p className="mt-2 text-sm text-tg-hint">{error}</p>
+          <button
+            type="button"
+            className="mt-4 rounded-full bg-tg-button px-4 py-2 text-sm font-semibold text-tg-buttonText"
+            onClick={() => reset()}
+          >
+            Try again
+          </button>
         </div>
       </div>
     );

@@ -97,7 +97,8 @@ public class OrderBuilder {
         Map<String, Object> domain = new LinkedHashMap<>();
         domain.put("name", DOMAIN_NAME);
         domain.put("version", DOMAIN_VERSION);
-        domain.put("chainId", u256Decimal(CHAIN_ID_POLYGON));
+        // Privy's TypedMessage validator requires chainId as a JSON number (uint256 still per spec).
+        domain.put("chainId", CHAIN_ID_POLYGON);
         domain.put("verifyingContract", props.polygon().ctfExchangeAddress());
 
         Map<String, Object> message = new LinkedHashMap<>();

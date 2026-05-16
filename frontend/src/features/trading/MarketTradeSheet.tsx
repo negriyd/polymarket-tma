@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth';
+import { useSignTypedData, useWallets, type SignTypedDataParams } from '@privy-io/react-auth';
 import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
 import type { ApiError, Market, OrderSignatureType } from '@/lib/api/types';
@@ -34,13 +34,24 @@ function pickPrices(market: Market): { yes?: number; no?: number } {
   };
 }
 
+interface PrivyErrorShape {
+  code?: string;
+  type?: string;
+  cause?: unknown;
+}
+
 function formatErr(e: unknown): string {
   if (e instanceof AxiosError) {
     const d = e.response?.data as ApiError | undefined;
     if (d?.message) return d.message;
     if (e.message) return e.message;
   }
-  if (e instanceof Error) return String(e.message);
+  if (e instanceof Error) {
+    const extra = e as Error & PrivyErrorShape;
+    const code = extra.code ?? extra.type;
+    if (code) return `${code}: ${e.message}`;
+    return e.message;
+  }
   return 'Something went wrong';
 }
 
@@ -63,6 +74,20 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
   const qc = useQueryClient();
   const w = useWallet();
   const { signTypedData } = useSignTypedData();
+  const { wallets } = useWallets();
+
+  const activeWallet = wallets.find(
+    (wallet) => w.address && wallet.address.toLowerCase() === w.address.toLowerCase(),
+  );
+  const walletChainId = (() => {
+    const cid = activeWallet?.chainId;
+    if (!cid) return undefined;
+    if (typeof cid === 'string') {
+      const m = cid.match(/^eip155:(\d+)$/);
+      return m ? Number(m[1]) : Number(cid);
+    }
+    return Number(cid);
+  })();
 
   const { yesToken, noToken } = pickTokenIds(market);
   const { yes: yesP, no: noP } = pickPrices(market);
@@ -127,9 +152,24 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
         makerAddress,
       });
 
-      const { signature } = await signTypedData(prep.typedData as SignTypedDataParams, {
-        address: w.address,
-      });
+      if (activeWallet && 'switchChain' in activeWallet && walletChainId !== 137) {
+        try {
+          await (activeWallet as unknown as { switchChain: (id: number) => Promise<void> })
+            .switchChain(137);
+        } catch (err) {
+          console.warn('Privy wallet.switchChain(137) failed:', err);
+        }
+      }
+      let signature: string;
+      try {
+        const res = await signTypedData(prep.typedData as SignTypedDataParams, {
+          address: w.address,
+        });
+        signature = res.signature;
+      } catch (err) {
+        console.error('Privy signTypedData failed for Order:', err, prep.typedData);
+        throw err;
+      }
 
       try {
         return await api.submitOrder({
@@ -237,6 +277,12 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
             )}
           </label>
 
+          {walletChainId !== undefined && walletChainId !== 137 && (
+            <p className="text-xs text-amber-500">
+              Wallet is on chain {walletChainId}. Polymarket uses Polygon (137); we will try to switch
+              before signing — if signing still fails, switch the network in your wallet manually.
+            </p>
+          )}
           {error && <p className="text-sm text-rose-500">{error}</p>}
           {success && <p className="text-sm text-emerald-500">{success}</p>}
 

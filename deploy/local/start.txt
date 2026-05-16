@@ -1,3 +1,4 @@
+
 VITE_API_BASE_URL= docker-compose --profile full up -d --build
 
 # Check locally:
@@ -19,14 +20,14 @@ docker-compose --profile full down
 Build & Push Docker images
 ----------------------------------------------
 docker buildx build --platform linux/amd64 -f deploy/Dockerfile.backend \
-  -t negriyd/polymarket-tma-backend:2025-05-14 --push ./backend
+  -t negriyd/polymarket-tma-backend:2025-05-16 --push ./backend
 
   docker buildx build --platform linux/amd64 -f deploy/Dockerfile.frontend \
     --build-arg VITE_API_BASE_URL="" \
     --build-arg VITE_PRIVY_APP_ID="cmp5e765v00970cjs0zzg0ru2" \
     --build-arg VITE_POLYGON_RPC_URL="https://polygon-rpc.com" \
     --build-arg NODE_MEMORY_MB=4096 \
-    -t negriyd/polymarket-tma-frontend:2025-05-14 --push ./frontend
+    -t negriyd/polymarket-tma-frontend:2025-05-16 --push ./frontend
 
 
 ------------------------------------------------

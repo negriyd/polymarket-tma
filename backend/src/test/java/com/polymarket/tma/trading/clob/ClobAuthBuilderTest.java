@@ -25,7 +25,9 @@ class ClobAuthBuilderTest {
         assertThat(root.get("primaryType").asText()).isEqualTo("ClobAuth");
         assertThat(root.get("domain").get("name").asText()).isEqualTo("ClobAuthDomain");
         assertThat(root.get("domain").get("version").asText()).isEqualTo("1");
-        assertThat(root.get("domain").get("chainId").asText()).isEqualTo("137");
+        // Privy validates chainId as a JSON number — must NOT be a string.
+        assertThat(root.get("domain").get("chainId").isNumber()).isTrue();
+        assertThat(root.get("domain").get("chainId").asLong()).isEqualTo(137L);
 
         JsonNode message = root.get("message");
         assertThat(message.get("address").asText())
