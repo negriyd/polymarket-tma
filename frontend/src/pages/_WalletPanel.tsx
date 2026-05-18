@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useWallet } from '@/features/wallet/useWallet';
 import { ClobAuthSection } from '@/features/wallet/ClobAuthSection';
 import { ApprovalsSection } from '@/features/wallet/ApprovalsSection';
+import { PositionRow } from '@/features/trading/PositionRow';
 import { Spinner } from '@/components/Spinner';
 import { api } from '@/lib/api/endpoints';
 
@@ -27,6 +28,19 @@ export function WalletPanel() {
     enabled: !!w.address,
     refetchInterval: 30_000,
   });
+
+  // Aggregate stats for the section header — recomputed only when positions change.
+  const stats = useMemo(() => {
+    const list = positions.data ?? [];
+    if (list.length === 0) return null;
+    let value = 0;
+    let pnl = 0;
+    for (const p of list) {
+      value += p.currentValue ?? 0;
+      pnl += p.cashPnl ?? 0;
+    }
+    return { count: list.length, value, pnl };
+  }, [positions.data]);
 
   if (!w.ready) return <Spinner label="Initialising wallet…" />;
 
@@ -60,26 +74,29 @@ export function WalletPanel() {
           <ApprovalsSection walletAddress={w.address} />
 
           <section className="space-y-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-tg-hint">Positions</h2>
+            <header className="flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-tg-hint">Positions</h2>
+              {stats && (
+                <p className="text-[11px] text-tg-hint">
+                  {stats.count} · ${stats.value.toFixed(2)} ·{' '}
+                  <span className={stats.pnl >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
+                    {stats.pnl >= 0 ? '+' : ''}${stats.pnl.toFixed(2)}
+                  </span>
+                </p>
+              )}
+            </header>
             {positions.isLoading && <Spinner />}
+            {positions.isError && (
+              <p className="rounded-xl bg-tg-secondary p-3 text-sm text-rose-500">
+                Failed to load positions.
+              </p>
+            )}
             {positions.data && positions.data.length === 0 && (
               <p className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint">No open positions.</p>
             )}
             <ul className="space-y-2">
               {positions.data?.map((p) => (
-                <li
-                  key={p.tokenId}
-                  className="flex items-center justify-between rounded-xl bg-tg-secondary p-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-tg-text">{p.outcome}</p>
-                    <p className="text-xs text-tg-hint">{p.size.toFixed(2)} @ ${p.avgPrice.toFixed(2)}</p>
-                  </div>
-                  <div className={p.pnl >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
-                    <p className="text-right tabular-nums">${p.currentValue.toFixed(2)}</p>
-                    <p className="text-right text-xs tabular-nums">{p.pnl >= 0 ? '+' : ''}{p.pnl.toFixed(2)}</p>
-                  </div>
-                </li>
+                <PositionRow key={`${p.conditionId}:${p.asset}`} p={p} />
               ))}
             </ul>
           </section>

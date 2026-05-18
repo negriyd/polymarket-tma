@@ -78,14 +78,43 @@ export interface Favorite {
   conditionId: string;
 }
 
+/**
+ * Open position as returned by `GET /api/positions`. Field set mirrors Polymarket Data API; backend
+ * decorates entries with {@link Position.favorite} based on the caller's saved markets.
+ */
 export interface Position {
+  proxyWallet: string;
+  /** CLOB token id for this outcome (uint256 decimal string). */
+  asset: string;
   conditionId: string;
-  tokenId: string;
-  outcome: string;
   size: number;
   avgPrice: number;
+  initialValue: number;
   currentValue: number;
-  pnl: number;
+  /** Unrealised PnL in USDC (positive when in profit). */
+  cashPnl: number;
+  /** Same PnL but as a fraction (0.12 == +12%). */
+  percentPnl: number;
+  totalBought: number;
+  realizedPnl: number;
+  percentRealizedPnl: number;
+  /** Last traded outcome price, 0..1. */
+  curPrice: number;
+  redeemable: boolean;
+  mergeable: boolean;
+  title: string;
+  slug: string;
+  icon?: string;
+  eventSlug: string;
+  /** Outcome label such as "Yes" or "No". */
+  outcome: string;
+  outcomeIndex: number;
+  oppositeOutcome: string;
+  oppositeAsset: string;
+  /** ISO-8601 string, may be empty for never-ending markets. */
+  endDate: string;
+  negativeRisk: boolean;
+  favorite?: boolean;
 }
 
 export interface TypedDataResponse {

@@ -1,8 +1,10 @@
 package com.polymarket.tma.trading;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.market.MarketCacheService;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.core.ParameterizedTypeReference;
@@ -11,6 +13,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+/**
+ * Reads a user's open positions from the Polymarket Data API.
+ *
+ * <p>The endpoint {@code GET https://data-api.polymarket.com/positions?user=&lt;wallet&gt;} returns one
+ * record per outcome the user holds. The schema below mirrors the public API (camelCase) and matches the
+ * fields used by official clients (py-clob-client, polymarket-rs-sdk). Unknown fields are tolerated so
+ * minor upstream additions do not break us.
+ */
 @Component
 public class PositionsClient {
 
@@ -41,13 +51,52 @@ public class PositionsClient {
                 });
     }
 
+    /**
+     * Single position as returned by Polymarket Data API. {@code favorite} is added on the way out by
+     * {@link PositionsController} based on the caller's saved markets — Data API itself never sets it.
+     *
+     * <p>All numeric quantities use {@link BigDecimal} so exact USDC math stays untruncated. Most flags
+     * are non-null primitives because the API consistently returns them; a missing field will default to
+     * {@code false} or {@code 0} which is the expected fallback.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Position(
+            String proxyWallet,
+            String asset,
             String conditionId,
-            String tokenId,
+            BigDecimal size,
+            BigDecimal avgPrice,
+            BigDecimal initialValue,
+            BigDecimal currentValue,
+            BigDecimal cashPnl,
+            BigDecimal percentPnl,
+            BigDecimal totalBought,
+            BigDecimal realizedPnl,
+            BigDecimal percentRealizedPnl,
+            BigDecimal curPrice,
+            boolean redeemable,
+            boolean mergeable,
+            String title,
+            String slug,
+            String icon,
+            String eventSlug,
             String outcome,
-            java.math.BigDecimal size,
-            java.math.BigDecimal avgPrice,
-            java.math.BigDecimal currentValue,
-            java.math.BigDecimal pnl
-    ) {}
+            int outcomeIndex,
+            String oppositeOutcome,
+            String oppositeAsset,
+            String endDate,
+            boolean negativeRisk,
+            /** Filled in by our backend, not by the upstream API. */
+            Boolean favorite
+    ) {
+
+        /** Returns a copy with {@code favorite} replaced. */
+        public Position withFavorite(boolean fav) {
+            return new Position(
+                    proxyWallet, asset, conditionId, size, avgPrice, initialValue, currentValue,
+                    cashPnl, percentPnl, totalBought, realizedPnl, percentRealizedPnl, curPrice,
+                    redeemable, mergeable, title, slug, icon, eventSlug, outcome, outcomeIndex,
+                    oppositeOutcome, oppositeAsset, endDate, negativeRisk, fav);
+        }
+    }
 }

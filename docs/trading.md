@@ -13,7 +13,7 @@ Polymarket trading settles on **CTF Exchange (Polygon)**. The backend never hold
 | Wallet | Optional Privy when `VITE_PRIVY_APP_ID` | Privy on Polygon + USDC `balanceOf` via viem |
 | Orders | — | `POST /api/orders/prepare`, `POST /api/orders/submit`, Redis pending cache, `order_audit` table |
 | CLOB submit | — | `POST /order` with **L2 HMAC headers** when the user has derived credentials; falls back to unauthenticated post if not. L1 key derivation flow exposed at `/api/clob/auth/*` |
-| Positions | — | `GET /api/positions` → Data API `GET /positions?user=<wallet>` (≈10s Redis cache) |
+| Positions | — | `GET /api/positions` → Data API `GET /positions?user=<wallet>` (≈10s Redis cache); response includes title/icon/outcome/PnL/redeemable and a `favorite` flag joined from the local `favorite_market` table |
 | Cancel | — | `DELETE /api/orders/{orderId}` returns `CLOB_NOT_WIRED` (placeholder) |
 | USDC / CTF approvals | — | **Not implemented** |
 | Canonical **order hash** | — | **EIP-712 digest** via web3j `StructuredDataEncoder` (same hash wallets sign). **TypedData** emits all `uint256` / `uint8` fields as **decimal strings** (incl. `domain.chainId`) so Privy/viem do not lose precision on large `tokenId`. CLOB acceptance still needs **L1/L2** and exact POST body rules. |
