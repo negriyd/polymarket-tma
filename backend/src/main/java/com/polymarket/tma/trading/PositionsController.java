@@ -9,9 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
@@ -49,16 +47,6 @@ public class PositionsController {
                         .map(p -> p.withFavorite(p.conditionId() != null
                                 && favored.contains(p.conditionId().toLowerCase())))
                         .toList());
-    }
-
-    @DeleteMapping("/orders/{orderId}")
-    public Mono<Void> cancel(@AuthenticationPrincipal AuthPrincipal principal,
-                             @PathVariable String orderId) {
-        requireWallet(principal);
-        // Placeholder: real implementation calls CLOB DELETE /order with L2 auth headers.
-        // Until L1/L2 are wired, return a structured error so the UI can show a banner.
-        return Mono.error(ApiException.upstream("CLOB_NOT_WIRED",
-                "Cancel is not wired in MVP scaffolding (see docs/trading.md)"));
     }
 
     private AppUser requireWallet(AuthPrincipal principal) {

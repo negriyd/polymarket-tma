@@ -120,6 +120,15 @@ export interface Position {
 export interface TypedDataResponse {
   orderHash: string;
   typedData: Record<string, unknown>;
+  /**
+   * Optional ERC-20 USDC `transfer(recipient, amount)` to broadcast right before submitting
+   * the order. Present when the platform is configured with a non-zero spread / fee wallet.
+   */
+  feeTx?: ApprovalUnsignedTx | null;
+  /** Fee amount in USDC, decimal string (e.g. "0.025"). Null when no fee is charged. */
+  feeAmountUsdc?: string | null;
+  /** Basis points actually applied (echoes server config). Null when no fee. */
+  feeBps?: number | null;
 }
 
 export interface SubmittedOrder {
@@ -149,7 +158,11 @@ export interface ClobAuthStatus {
 }
 
 export interface ApprovalUnsignedTx {
-  kind: 'USDC_APPROVE' | 'CTF_SET_APPROVAL_FOR_ALL';
+  kind:
+    | 'USDC_APPROVE'
+    | 'CTF_SET_APPROVAL_FOR_ALL'
+    | 'CTF_REDEEM_POSITIONS'
+    | 'TRADING_FEE_TRANSFER';
   to: string;
   data: string;
   value: string;
@@ -172,3 +185,20 @@ export interface ApprovalStatus {
 }
 
 export type OrderSignatureType = 'EOA' | 'POLY_PROXY' | 'POLY_GNOSIS_SAFE';
+
+/** Public read-only platform fee configuration (`GET /api/fees`). */
+export interface FeeConfig {
+  enabled: boolean;
+  /** Basis points; 100 = 1%, 50 = 0.5%. Always 0 when {@link enabled} is false. */
+  spreadBps: number;
+  recipient: string | null;
+}
+
+/** Response from `POST /api/positions/redeem/prepare` — wallet broadcasts {@link RedeemPrepareResponse.tx}. */
+export interface RedeemPrepareResponse {
+  conditionId: string;
+  outcomeIndex: number;
+  /** Index sets actually burned (decimal strings, typically `["1"]` or `["2"]`). */
+  indexSets: string[];
+  tx: ApprovalUnsignedTx;
+}

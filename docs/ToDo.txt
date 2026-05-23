@@ -1,25 +1,93 @@
 Шаги, чтобы добить сквозной сценарий для пользователя (RU)
+Статус на 23 мая 2026 — обновлён после итерации redeem + cancel + spread-fee + миграции на CLOB v2.
+
+Z. Миграция на Polymarket CLOB v2  [PARTIAL — 2026-05-23]
+  • Polymarket с 22 апреля 2026 переключили CTF Exchange на новую схему ордеров.
+    Старый v1-контракт (0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E) с 30 апреля
+    отдаёт 400 "order_version_mismatch" — все интеграторы 0.34.6-стека сломаны.
+  • [DONE] Поменяли OrderBuilder под v2 EIP-712 (domain version="2"; struct: salt,
+    maker, signer, tokenId, makerAmount, takerAmount, side, signatureType, timestamp,
+    metadata, builder — без nonce/feeRateBps/taker).
+  • [DONE] ClobOrderClient → новый JSON envelope: owner = API key UUID,
+    deferExec/postOnly на верхнем уровне, signature внутри order, salt/signatureType
+    — JSON number.
+  • [DONE] application.yml: ctf-exchange-address (v2) = 0xE111180000…E1f4F00237545B87B996B,
+    neg-risk-ctf-exchange-address (v2) = 0xe2222d279d744050d28e00520010520000310F59.
+  • [DONE] Регрессионные тесты: OrderBuilderTest и ClobOrderClientPayloadTest
+    (включая mapping CLOB_ORDER_VERSION_MISMATCH и CLOB_DEPOSIT_WALLET_REQUIRED).
+  • [BLOCKED — UPSTREAM] Polymarket CLOB v2 фактически отключил прямую торговлю
+    с EOA. На корректно собранный v2-ордер сервер отвечает 400 "maker address not
+    allowed, please use the deposit wallet flow". Чтобы торговать через API,
+    кошелёк должен сначала пройти онбординг на polymarket.com (депозит + одна
+    маленькая сделка) — это деплоит CREATE2-прокси deposit wallet, после чего
+    ордера должны идти с signatureType=3 (POLY_1271, ERC-7739-обёртка),
+    maker=proxy, signer=EOA. На середину мая 2026 у Polymarket этот путь до сих
+    пор сломан (issues #51, #53, #61, #63, #64 в py-clob-client-v2). Ждём фикса
+    апстрима. Пока бэкенд маппит 400 в CLOB_DEPOSIT_WALLET_REQUIRED, фронт
+    показывает понятный тост.
+
 A. Ставки (ордера)
-  1. Исправить typedData до формата, который принимают Privy/viem и CLOB (все нужные числа — согласованно, домен включая chainId).
-  2. Реализовать настоящий orderHash (EIP-712 digest совпадает с ожиданием CLOB).
-  3. L1 + L2 по документации CLOB для каждого запроса POST /order (как у вас в TODO).
-  4. Ончейн approvals перед первым ордером (USDC + conditional tokens для exchange).
-  5. Выбор правильного signatureType и связки maker/signer под ваш тип кошелька (EOA vs proxy).
+  1. [DONE] typedData в формате Privy/viem/CLOB. OrderBuilder сериализует все uint256/uint8 как
+     decimal strings, chainId остаётся JSON number (требование Privy TypedMessage).
+  2. [DONE] Настоящий orderHash — EIP-712 digest через web3j StructuredDataEncoder, тот же,
+     что подписывает кошелёк.
+  3. [DONE] L1 + L2 для каждого POST /order. Backend: ClobAuthBuilder, ClobApiKeyClient,
+     ClobCredentialsStore (Redis, TTL 30 дней), ClobL2Signer (HMAC-SHA256 base64 url-safe).
+     Frontend: ClobAuthSection.tsx — кнопка «Connect Polymarket trading».
+  4. [DONE] Ончейн approvals (USDC + CTF setApprovalForAll) — backend ApprovalService +
+     /api/wallet/approvals; frontend ApprovalsSection.tsx → Privy useSendTransaction.
+  5. [DONE] signatureType + maker/signer. PrepareOrderRequest.makerAddress, ошибки
+     MAKER_REQUIRED / MAKER_EQUALS_SIGNER, матрица EOA / POLY_PROXY / POLY_GNOSIS_SAFE.
+  6. [DONE] Cancel ордера. DELETE /api/orders/{orderId} → CLOB DELETE /order с L2-headers
+     (ClobOrderClient.cancel + TradingService.cancel). UI «My orders» пока не реализован,
+     но сам endpoint готов.
 
 B. Текущие ставки / позиции
-  1. Полировать GET /api/positions + UI: суммы, средняя цена, рынок, outcome (YES/NO), при желании связка с локальными favorite.
-  2. При необходимости — второй источник (Gamma/market slug) только для человекочитаемого заголовка.
+  1. [DONE] GET /api/positions отдаёт title/icon/outcome/avgPrice/curPrice/PnL/redeemable,
+     joined с локальной таблицей favorite_market.
+  2. [DONE] PositionRow.tsx: бейджи outcome/favorite/redeemable + «ends in Nd» / «ends Mon DD»,
+     суммы, средняя цена, текущая цена, абсолютный и процентный PnL, кнопка Claim
+     (см. блок D ниже).
 
-C. Уведомления «рынок зарезолвился / можно redeem»
-Варианты (на выбор уровень сложности):
-  • Polling Data API позиций + поля «resolved / redeemable / claimable» если API их отдаёт.
-  • Лёгкая оффчейн job по спискам conditionId ваших активных пользователей — запрос статусов рынков в Gamma.
-  • Тяжёлое: подписка на логи ончейн Resolution / индексатор Polymarket.
+C. Уведомления «рынок зарезолвился / можно redeem»  [TODO]
+  План:
+   • Spring @Scheduled job каждые 5 минут — обходит активных пользователей с walletAddress,
+     дёргает /api/positions, фильтрует redeemable=true.
+   • Дедуп по ключу (telegramUserId, conditionId) в Redis с TTL = срок жизни рынка.
+   • Telegram Bot API: используется уже сконфигурированный app.telegram.bot-token.
+     Шлём сообщение «Рынок «X» зарезолвился, у вас Y USDC к редиму» с deep-link на /wallet.
+   • Опционально (вторая фаза) — подписка на ончейн логи Resolution / индексатор Polymarket
+     для инстант-уведомлений.
 
-Дальше: Firebase / Telegram Bot API отправка сообщения пользователю (у вас уже есть Telegram — логически связать Telegram user id ←→ уведомления).
 D. Получение выигрыша (redeem)
-  1. Спека вызова Conditional Tokens Framework для redeemPositions / аналога по актуальной сети контрактов Polymarket.
-  2. Бэкенд отдаёт unsigned tx calldata + to + value, фронт подписывает и отправляет через Privy (или делать meta-tx только если поддерживается).
-  3. Отдельный экран «Claim» по позиции с суммой USDC после успешной транзы.
+  1. [DONE] Спека вызова redeemPositions(IERC20,bytes32,bytes32,uint256[]) из CTF.
+     RedeemCalldataBuilder: indexSet = 1 << outcomeIndex, parentCollectionId = 0x0.
+  2. [DONE] Backend отдаёт unsigned tx (to=CTF, data, value=0x0, chainId=137):
+     POST /api/positions/redeem/prepare {conditionId, outcomeIndex}.
+  3. [DONE] Frontend Claim — кнопка прямо в карточке позиции (PositionRow.tsx) когда
+     redeemable=true. Privy useSendTransaction → invalidate ['positions'].
 
-Если нужно, следующим шагом могу конкретно предложить патч под OrderBuilder (единый строковый формат uint полей для Privy), это часто первый быстрый способ проверить гипотезу про ошибку подписи.
+E. Монетизация — конфигурируемый spread / комиссия
+  1. [DONE] app.fees.spread-bps + app.fees.recipient-address в application.yml.
+     0 bps или пустой recipient = фича выключена.
+  2. [DONE] FeeService.quote: fee = price × size × spread / 10_000 (микро-USDC).
+  3. [DONE] /api/orders/prepare возвращает feeTx (USDC transfer на recipient) + feeAmountUsdc + feeBps.
+     MarketTradeSheet после подписи ордера шлёт feeTx через Privy и затем submit.
+  4. [DONE] Публичный GET /api/fees — frontend показывает превью «Platform fee 0.50% · ≈ $0.025 USDC»
+     до подписания.
+  5. [TODO] Добавить колонки fee_amount / fee_recipient / fee_tx_hash в order_audit
+     (Flyway V2__order_audit_fees.sql) — для ретро-аналитики и прозрачности.
+
+Дальнейшие итерации (приоритет):
+  1. C. Уведомления о redeem (poller + Telegram Bot).
+  2. UI «My orders» поверх готового DELETE /api/orders/{id}.
+  3. order_audit fee columns + дашборд по комиссии (Prometheus → Grafana).
+  4. Sponsor gas через Privy session signers / paymaster (улучшение UX оплаты комиссии).
+
+Следующие шаги (что я бы делал дальше)
+Уведомления о redeem (C) — @Scheduled job каждые 5 минут пробегает активных пользователей с walletAddress, фильтрует redeemable=true, дедуп по (telegramUserId, conditionId) в Redis, шлёт сообщение через уже сконфигурированный app.telegram.bot-token. Минимум кода, максимум retention.
+order_audit колонки fee_amount / fee_recipient / fee_tx_hash — Flyway V2__order_audit_fees.sql, плюс прокинуть feeTxHash в submitOrder для аналитики.
+UI «My orders» поверх готового DELETE /api/orders/{id} — список открытых CLOB-ордеров с кнопкой Cancel.
+Спонсирование газа через Privy session signers / paymaster — чтобы fee-транза выглядела бесплатной для пользователя.
+Метрики комиссии — Prometheus counter trading_fees_charged_usdc_total{recipient} + Grafana-дашборд (рядом с уже подключёнными actuator/prometheus).
+

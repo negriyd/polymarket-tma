@@ -29,8 +29,9 @@ class TelegramInitDataValidatorTest {
                 new AppProperties.Jwt("0123456789012345678901234567890123", Duration.ofMinutes(15), Duration.ofDays(30), "test"),
                 new AppProperties.Telegram(BOT_TOKEN, ttl),
                 new AppProperties.Polymarket("", "", "", "", Duration.ZERO, Duration.ZERO, Duration.ZERO, Duration.ZERO),
-                new AppProperties.Polygon("", "", "", ""),
-                new AppProperties.Privy("", "")
+                new AppProperties.Polygon("", "", "", "", ""),
+                new AppProperties.Privy("", ""),
+                new AppProperties.Fees(0, "")
         );
         return new TelegramInitDataValidator(props, mapper);
     }

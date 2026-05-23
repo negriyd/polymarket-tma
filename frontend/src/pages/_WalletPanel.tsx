@@ -96,7 +96,7 @@ export function WalletPanel() {
             )}
             <ul className="space-y-2">
               {positions.data?.map((p) => (
-                <PositionRow key={`${p.conditionId}:${p.asset}`} p={p} />
+                <PositionRow key={`${p.conditionId}:${p.asset}`} p={p} walletAddress={w.address} />
               ))}
             </ul>
           </section>

@@ -39,6 +39,14 @@ public record MarketDto(
         List<String> clobTokenIds,
         @JsonProperty("outcomePrices")
         @JsonDeserialize(using = PolymarketStringListDeserializer.class)
-        List<String> outcomePrices
+        List<String> outcomePrices,
+        /**
+         * Polymarket markets live on one of two on-chain CTF Exchange instances and orders MUST
+         * be signed against the matching {@code verifyingContract}. {@code negRisk == true} means
+         * the order has to use the NegRisk CTF Exchange domain; {@code false}/{@code null}
+         * means the regular CTF Exchange. Submitting against the wrong one returns
+         * {@code 400 "order_version_mismatch"}.
+         */
+        @JsonProperty("negRisk") Boolean negRisk
 ) {
 }

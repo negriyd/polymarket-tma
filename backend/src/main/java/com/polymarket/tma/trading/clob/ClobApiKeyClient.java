@@ -40,8 +40,17 @@ public class ClobApiKeyClient {
                 .header("POLY_NONCE", Long.toString(nonce))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, resp -> resp.bodyToMono(String.class).defaultIfEmpty("")
-                        .map(body -> ApiException.upstream("CLOB_AUTH_" + resp.statusCode().value(),
-                                "CLOB rejected api-key derivation: " + resp.statusCode().value() + " " + body)))
+                        .map(body -> {
+                            int status = resp.statusCode().value();
+                            String safe = body == null ? "" : body;
+                            if (status == 403 && safe.toLowerCase().contains("geoblock")) {
+                                return ApiException.upstream("CLOB_GEOBLOCKED",
+                                        "Polymarket geoblocked the server's region for /auth/api-key. "
+                                                + "Redeploy backend to a US datacenter. Upstream: " + safe);
+                            }
+                            return ApiException.upstream("CLOB_AUTH_" + status,
+                                    "CLOB rejected api-key derivation: " + status + " " + safe);
+                        }))
                 .bodyToMono(ClobCredentials.class);
     }
 }

@@ -1,41 +1,80 @@
+Local dev (full stack via docker-compose):
 
 VITE_API_BASE_URL= docker-compose --profile full up -d --build
 
 # Check locally:
-
 # curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5173/
 # curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/actuator/health
 # (Expect 200; backend may need a few seconds after start.)
 
-
 cloudflared tunnel --url http://127.0.0.1:5173
-
 
 # Stop:
 docker-compose --profile full down
 
 
-
 ----------------------------------------------
 Build & Push Docker images
 ----------------------------------------------
+
+# IMPORTANT — build-time vs runtime envs:
+#
+# * BACKEND  is a Spring Boot bootJar — it reads ALL env vars at runtime. Build-args do nothing
+#   for it. Set BOT_TOKEN / JWT_SECRET / TRADING_FEE_* / etc. in deploy/.env on the server,
+#   the compose env_file injects them into the container.
+#
+# * FRONTEND is a Vite SPA — Vite inlines VITE_* vars into the JS bundle at `pnpm build` time,
+#   so VITE_API_BASE_URL / VITE_PRIVY_APP_ID / VITE_POLYGON_RPC_URL must be passed as --build-arg
+#   (and remain empty in the running nginx container — that is normal). To verify they made it
+#   into the bundle:
+#     docker exec polymarket-frontend sh -c "grep -ro YOUR_PRIVY_APP_ID /usr/share/nginx/html/assets | head -1"
+
 docker buildx build --platform linux/amd64 -f deploy/Dockerfile.backend \
   -t negriyd/polymarket-tma-backend:2025-05-16 --push ./backend
 
-  docker buildx build --platform linux/amd64 -f deploy/Dockerfile.frontend \
-    --build-arg VITE_API_BASE_URL="" \
-    --build-arg VITE_PRIVY_APP_ID="cmp5e765v00970cjs0zzg0ru2" \
-    --build-arg VITE_POLYGON_RPC_URL="https://polygon-mainnet.g.alchemy.com/v2/ra6MsVns0yIM7sxCJj2ce" \
-    --build-arg NODE_MEMORY_MB=4096 \
-    -t negriyd/polymarket-tma-frontend:2025-05-16 --push ./frontend
+docker buildx build --platform linux/amd64 -f deploy/Dockerfile.frontend \
+  --build-arg VITE_API_BASE_URL="" \
+  --build-arg VITE_PRIVY_APP_ID="cmp5e765v00970cjs0zzg0ru2" \
+  --build-arg VITE_POLYGON_RPC_URL="https://polygon-mainnet.g.alchemy.com/v2/ra6MsVns0yIM7sxCJj2ce" \
+  --build-arg NODE_MEMORY_MB=4096 \
+  -t negriyd/polymarket-tma-frontend:2025-05-16 --push ./frontend
 
 
 ------------------------------------------------
 On Server
 ------------------------------------------------
+
+# 1) Choose an allowed datacenter region. Polymarket international CLOB geoblocks US, Germany,
+#    UK, Canada, Singapore, India, and OFAC-sanctioned countries (verified Sat May 23 2026).
+#    Verified working:        Hetzner HEL1 (Helsinki), AWS eu-west-1 (Dublin).
+#    Conditional (try first): Vultr Stockholm/Madrid, DigitalOcean ams3 — verify per /24 with
+#                             /api/diagnostics/clob-post-probe before committing.
+#    Verified blocked:        DO nyc1/nyc3/sfo3 (US — international CLOB rejects all US IPs),
+#                             DO fra1/lon1, DO tor1 (CA), DO sgp1/blr1, Hetzner NBG/FSN/FRA.
+#
+# 2) Make sure deploy/.env has at minimum:
+#      BOT_TOKEN=...
+#      JWT_SECRET=...                    (32+ chars)
+#      PRIVY_APP_ID=...
+#      PRIVY_APP_SECRET=...
+#      CORS_ALLOWED_ORIGINS=...
+#      TRADING_FEE_BPS=0                 (set >0 + recipient to enable monetization)
+#      TRADING_FEE_RECIPIENT=
+#    See deploy/.env.example + deploy/.env.prebuilt.example for the full list.
+#
+# 3) Pull + run.
+
 docker-compose -f docker-compose.prebuilt.yml --env-file .env --profile full pull
-docker-compose -f docker-compose.prebuilt.yml --env-file .env --profile full up -d
+docker-compose -f docker-compose.prebuilt.yml --env-file .env --profile full up -d --force-recreate
 
+# 4) Verify the host is in an allowed region. The decisive check is /clob-post-probe:
+curl -s http://localhost:8080/api/diagnostics/clob-post-probe
+# Expected: status 400/401/422 — international CLOB lets POST /order through to the real
+#           signing/payload validation. 403 with "Trading restricted in your region" → wrong
+#           region (or wrong /24); migrate to Hetzner HEL1 / AWS eu-west-1.
 
+curl -s http://localhost:8080/api/diagnostics/cf-trace | python3 -c "import sys,json; t=json.load(sys.stdin)['trace']; print([l for l in t.split() if l.startswith('loc=')][0])"
+# Sanity check on country code (informational only — passing /clob-post-probe is what matters).
 
+# Stop:
 docker-compose -f docker-compose.prebuilt.yml --profile full down

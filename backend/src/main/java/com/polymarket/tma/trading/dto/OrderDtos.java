@@ -1,6 +1,7 @@
 package com.polymarket.tma.trading.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.polymarket.tma.wallet.ApprovalDtos;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -28,10 +29,19 @@ public final class OrderDtos {
             String makerAddress
     ) {}
 
-    /** EIP-712 typed data the client must sign with its Privy wallet. */
+    /**
+     * EIP-712 typed data the client must sign with its Privy wallet.
+     *
+     * <p>{@link #feeTx} is non-null when {@code app.fees.spread-bps > 0} and a recipient is
+     * configured: the wallet must broadcast it (a USDC ERC-20 transfer) right before submitting
+     * the signed order. {@link #feeAmountUsdc} is the human-readable fee in USDC for UI display.
+     */
     public record TypedDataResponse(
             String orderHash,
-            Map<String, Object> typedData
+            Map<String, Object> typedData,
+            ApprovalDtos.UnsignedTx feeTx,
+            String feeAmountUsdc,
+            Integer feeBps
     ) {}
 
     public record SubmitOrderRequest(

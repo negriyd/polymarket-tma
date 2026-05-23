@@ -39,8 +39,9 @@ class GammaClientTest {
                         "ws://localhost:" + wm.port(),
                         Duration.ofSeconds(30), Duration.ofSeconds(5),
                         Duration.ofSeconds(3), Duration.ofMinutes(2)),
-                new AppProperties.Polygon("", "", "", ""),
-                new AppProperties.Privy("", ""));
+                new AppProperties.Polygon("", "", "", "", ""),
+                new AppProperties.Privy("", ""),
+                new AppProperties.Fees(0, ""));
         client = new GammaClient(new WebClientConfig().webClientBuilder(), props);
     }
 

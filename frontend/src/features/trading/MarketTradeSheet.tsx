@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useSignTypedData, useWallets, type SignTypedDataParams } from '@privy-io/react-auth';
+import {
+  useSendTransaction,
+  useSignTypedData,
+  useWallets,
+  type SignTypedDataParams,
+} from '@privy-io/react-auth';
 import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
 import type { ApiError, Market, OrderSignatureType } from '@/lib/api/types';
@@ -43,6 +48,24 @@ interface PrivyErrorShape {
 function formatErr(e: unknown): string {
   if (e instanceof AxiosError) {
     const d = e.response?.data as ApiError | undefined;
+    // Friendly UI text for known structural CLOB rejections so the error toast doesn't read
+    // like a 500-character upstream dump. The full body still goes to the console.
+    if (d?.code === 'CLOB_DEPOSIT_WALLET_REQUIRED') {
+      return (
+        'Polymarket requires this wallet to be onboarded on polymarket.com first. ' +
+        'Open polymarket.com with this wallet, deposit USDC, and place one small trade ' +
+        'so your deposit-wallet proxy is deployed on-chain. After that come back here.'
+      );
+    }
+    if (d?.code === 'CLOB_GEOBLOCKED') {
+      return 'Polymarket has geoblocked the server region. Backend operator action required.';
+    }
+    if (d?.code === 'CLOB_ORDER_VERSION_MISMATCH') {
+      return (
+        'Polymarket rejected the EIP-712 order shape. This is a backend bug — please ' +
+        'report it; trading is paused until it is fixed.'
+      );
+    }
     if (d?.message) return d.message;
     if (e.message) return e.message;
   }
@@ -74,6 +97,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
   const qc = useQueryClient();
   const w = useWallet();
   const { signTypedData } = useSignTypedData();
+  const { sendTransaction } = useSendTransaction();
   const { wallets } = useWallets();
 
   const activeWallet = wallets.find(
@@ -98,13 +122,23 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
   const [usdcStr, setUsdcStr] = useState('5');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [feeTxHash, setFeeTxHash] = useState<string | null>(null);
 
   const cid = market.conditionId;
+
+  // Static (per session) platform fee config — drives the preview line below the inputs. Disabled
+  // when the backend has no fee configured, in which case we render nothing extra.
+  const feeCfg = useQuery({
+    queryKey: ['fee-config'],
+    queryFn: api.getFeeConfig,
+    staleTime: 5 * 60_000,
+  });
 
   useEffect(() => {
     if (!open) return;
     setError(null);
     setSuccess(null);
+    setFeeTxHash(null);
     if (refPrice != null) {
       setPriceStr(String(Math.min(0.99, Math.max(0.01, Number(refPrice)))));
     } else {
@@ -171,8 +205,12 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
         throw err;
       }
 
+      // Submit FIRST, then charge the platform fee. Earlier the fee tx ran before submit, but if
+      // CLOB rejected the order (e.g. geoblock 403) the user had already paid the on-chain fee
+      // for nothing. Order is now: prepare → sign (offline) → submit (HTTP) → fee tx (on-chain).
+      let submitted;
       try {
-        return await api.submitOrder({
+        submitted = await api.submitOrder({
           orderHash: prep.orderHash,
           signature,
           idempotency_key: crypto.randomUUID(),
@@ -183,16 +221,42 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
           e instanceof AxiosError &&
           (e.response?.status === 401 || e.response?.status === 403)
         ) {
-          // CLOB likely rejected the request because the L2 credentials expired/are missing.
+          // CLOB rejected the request because L2 credentials are missing/expired (and not the
+          // server-region geoblock — the backend uses a dedicated CLOB_GEOBLOCKED code for that).
           // Revoke locally so the wallet page prompts to re-connect Polymarket trading.
-          try {
-            await api.clobAuthRevoke();
-          } catch {
-            /* best effort */
+          const data = e.response?.data as { code?: string } | undefined;
+          if (data?.code !== 'CLOB_GEOBLOCKED') {
+            try {
+              await api.clobAuthRevoke();
+            } catch {
+              /* best effort */
+            }
           }
         }
         throw e;
       }
+
+      if (prep.feeTx) {
+        try {
+          const feeRes = await sendTransaction(
+            {
+              to: prep.feeTx.to,
+              data: prep.feeTx.data,
+              value: prep.feeTx.value,
+              chainId: prep.feeTx.chainId,
+            },
+            { address: w.address },
+          );
+          setFeeTxHash(feeRes.hash);
+        } catch (err) {
+          // The order is already accepted by CLOB — surface the failure but do NOT throw, so the
+          // success toast for the order still wins. Operators can reconcile uncollected fees off
+          // the order_audit row + on-chain USDC balance of the recipient wallet.
+          console.error('Trading fee transfer failed (order already submitted):', err);
+          setError(`Order placed but the platform fee tx failed: ${formatErr(err)}`);
+        }
+      }
+      return submitted;
     },
     onSuccess: (sub) => {
       setSuccess(`Order ${sub.status}${sub.orderId ? ` · ${sub.orderId.slice(0, 10)}…` : ''}`);
@@ -278,6 +342,13 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
             )}
           </label>
 
+          {feeCfg.data?.enabled && priceOk && usdcOk && shares != null && (
+            <p className="rounded-lg bg-tg-secondary px-3 py-2 text-xs text-tg-hint">
+              Platform fee {(feeCfg.data.spreadBps / 100).toFixed(2)}% · ≈ $
+              {((usdcNum * feeCfg.data.spreadBps) / 10_000).toFixed(4)} USDC
+              <span className="ml-1 text-tg-hint/70">(charged on top of the order)</span>
+            </p>
+          )}
           {walletChainId !== undefined && walletChainId !== 137 && (
             <p className="text-xs text-amber-500">
               Wallet is on chain {walletChainId}. Polymarket uses Polygon (137); we will try to switch
@@ -286,6 +357,9 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
           )}
           {error && <p className="text-sm text-rose-500">{error}</p>}
           {success && <p className="text-sm text-emerald-500">{success}</p>}
+          {feeTxHash && (
+            <p className="break-all text-[10px] text-emerald-500">fee tx: {feeTxHash}</p>
+          )}
 
           <p className="text-[10px] leading-snug text-tg-hint">
             Requires USDC on Polygon and contract approvals (see docs/trading.md). CLOB may reject orders until API

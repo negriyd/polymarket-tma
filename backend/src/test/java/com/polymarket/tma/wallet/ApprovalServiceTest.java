@@ -31,7 +31,7 @@ class ApprovalServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(props.polygon()).thenReturn(new AppProperties.Polygon("", USDC, EXCHANGE, CTF));
+        when(props.polygon()).thenReturn(new AppProperties.Polygon("", USDC, EXCHANGE, "", CTF));
         AppUser user = new AppUser();
         user.setWalletAddress(WALLET);
         when(userRepo.findById(1L)).thenReturn(Optional.of(user));

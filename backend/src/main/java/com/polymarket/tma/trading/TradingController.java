@@ -5,6 +5,8 @@ import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.trading.dto.OrderDtos;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,6 +35,17 @@ public class TradingController {
                                                          @Valid @RequestBody OrderDtos.SubmitOrderRequest req) {
         requireAuth(principal);
         return trading.submit(principal.userId(), req);
+    }
+
+    /**
+     * Cancel a previously submitted CLOB order. Requires connected Polymarket trading credentials
+     * (see {@code /api/clob/auth/...}). Returns 200 on success, structured error otherwise.
+     */
+    @DeleteMapping("/{orderId}")
+    public Mono<Void> cancel(@AuthenticationPrincipal AuthPrincipal principal,
+                              @PathVariable String orderId) {
+        requireAuth(principal);
+        return trading.cancel(principal.userId(), orderId);
     }
 
     private static void requireAuth(AuthPrincipal principal) {

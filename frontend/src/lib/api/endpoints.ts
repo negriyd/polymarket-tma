@@ -4,6 +4,7 @@ import type {
   ClobAuthPrepareResponse,
   ClobAuthStatus,
   Favorite,
+  FeeConfig,
   Market,
   MarketList,
   MarketComment,
@@ -11,6 +12,7 @@ import type {
   Orderbook,
   Position,
   PriceHistory,
+  RedeemPrepareResponse,
   SubmittedOrder,
   TokenPair,
   TypedDataResponse,
@@ -100,4 +102,15 @@ export const api = {
   /** Returns USDC + CTF approval state and a list of unsigned txs the wallet should broadcast. */
   getApprovals: () =>
     http.get<ApprovalStatus>('/api/wallet/approvals').then((r) => r.data),
+
+  /**
+   * Build the unsigned {@code redeemPositions} tx for a settled market. Frontend dispatches the
+   * returned {@link RedeemPrepareResponse.tx} via Privy and the user's USDC balance reflects the
+   * payout once the tx is mined.
+   */
+  prepareRedeem: (body: { conditionId: string; outcomeIndex: number }) =>
+    http.post<RedeemPrepareResponse>('/api/positions/redeem/prepare', body).then((r) => r.data),
+
+  /** Public platform-fee configuration (used to render a preview before signing). */
+  getFeeConfig: () => http.get<FeeConfig>('/api/fees').then((r) => r.data),
 };
