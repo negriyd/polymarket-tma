@@ -18,6 +18,15 @@ public final class RedeemDtos {
     ) {}
 
     /**
+     * Claim for positions held by the CLOB v2 deposit wallet. {@code negRisk} (from the position's
+     * {@code negativeRisk}) picks the CTF collateral adapter; wrong value just makes the batch revert.
+     */
+    public record BatchRequest(
+            @NotBlank String conditionId,
+            Boolean negRisk
+    ) {}
+
+    /**
      * Unsigned tx + the inputs that produced it. The frontend signs and broadcasts via Privy.
      *
      * @param indexSets   bitmask(s) burned in this redemption (single entry for the chosen outcome).

@@ -52,27 +52,45 @@ public class ApprovalStatusReader {
 
     /** {@code allowance(owner, spender)} on the USDC contract; {@code null} on RPC failure. */
     public BigInteger usdcAllowance(String owner, String spender) {
-        Function fn = new Function(
-                "allowance",
-                List.of(new Address(owner), new Address(spender)),
-                List.of(new TypeReference<Uint256>() {}));
-        return callForUint256(props.polygon().usdcAddress(), owner, fn);
+        return erc20Allowance(props.polygon().usdcAddress(), owner, spender);
     }
 
     /** {@code isApprovedForAll(owner, operator)} on the CTF contract; {@code null} on RPC failure. */
     public Boolean ctfIsApprovedForAll(String owner, String operator) {
+        return isApprovedForAll(props.polygon().ctfAddress(), owner, operator);
+    }
+
+    /** ERC-20 {@code allowance(owner, spender)} on {@code token}; {@code null} on RPC failure. */
+    public BigInteger erc20Allowance(String token, String owner, String spender) {
+        Function fn = new Function(
+                "allowance",
+                List.of(new Address(owner), new Address(spender)),
+                List.of(new TypeReference<Uint256>() {}));
+        return callForUint256(token, owner, fn);
+    }
+
+    /** ERC-20 {@code balanceOf(owner)} on {@code token}; {@code null} on RPC failure. */
+    public BigInteger erc20Balance(String token, String owner) {
+        Function fn = new Function(
+                "balanceOf",
+                List.of(new Address(owner)),
+                List.of(new TypeReference<Uint256>() {}));
+        return callForUint256(token, owner, fn);
+    }
+
+    /** ERC-1155 {@code isApprovedForAll(owner, operator)} on {@code token}; {@code null} on RPC failure. */
+    public Boolean isApprovedForAll(String token, String owner, String operator) {
         Function fn = new Function(
                 "isApprovedForAll",
                 List.of(new Address(owner), new Address(operator)),
                 List.of(new TypeReference<Bool>() {}));
-        String address = props.polygon().ctfAddress();
-        if (address == null || address.isBlank()) {
+        if (token == null || token.isBlank()) {
             return null;
         }
         try {
             String data = FunctionEncoder.encode(fn);
             EthCall resp = web3j().ethCall(
-                    Transaction.createEthCallTransaction(owner, address, data),
+                    Transaction.createEthCallTransaction(owner, token, data),
                     DefaultBlockParameterName.LATEST).send();
             if (resp.hasError() || resp.getValue() == null) {
                 return null;

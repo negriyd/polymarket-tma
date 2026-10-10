@@ -74,7 +74,8 @@ class ClobOrderClientPayloadTest {
                         Duration.ofSeconds(3), Duration.ofMinutes(2)),
                 new AppProperties.Polygon("", "", "", "", ""),
                 new AppProperties.Privy("", ""),
-                new AppProperties.Fees(0, ""));
+                new AppProperties.Fees(0, ""),
+                new AppProperties.Bets(false, "", "", "", 500, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, 15, 24, 5));
 
         client = new ClobOrderClient(
                 new WebClientConfig().webClientBuilder(),
@@ -161,11 +162,8 @@ class ClobOrderClientPayloadTest {
     }
 
     /**
-     * Polymarket CLOB v2 (post-2026-04-22 migration) deprecated direct EOA trading. Fresh wallets
-     * that haven't onboarded via polymarket.com get this 400 — surface a structured error code so
-     * the UI can render a clear "deposit + one trade on polymarket.com first" message instead of
-     * a raw upstream blob. See py-clob-client-v2 issues #51 / #53 / #61 / #63 for the upstream
-     * tracker.
+     * CLOB v2 rejects orders whose maker is a raw EOA. Surface a structured error code pointing
+     * the user to activate their deposit (trading) wallet instead of a raw upstream blob.
      */
     @Test
     void mapsDepositWalletRejectionToStructuredCode() {
@@ -184,7 +182,7 @@ class ClobOrderClientPayloadTest {
                 .satisfies(e -> {
                     ApiException api = (ApiException) e;
                     assertThat(api.getCode()).isEqualTo("CLOB_DEPOSIT_WALLET_REQUIRED");
-                    assertThat(api.getMessage()).contains("polymarket.com");
+                    assertThat(api.getMessage()).contains("trading wallet").doesNotContain("polymarket.com");
                 });
     }
 

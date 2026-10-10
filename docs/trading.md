@@ -1,6 +1,86 @@
 # Phase 2 — Trading status
 
-Polymarket trading settles on **CTF Exchange (Polygon)**. The backend never holds users’ private keys: the browser (**Privy** embedded wallet) signs **EIP-712** typed data; the backend posts the signed order to the **CLOB**. After the May 2026 iteration the end-to-end loop **deposit → trade → redeem** is wired, plus a configurable platform fee (spread) on every prepared order.
+> **Strategy (24 May 2026):** the **primary path for new users** is **internal parimutuel bets** — MVP (Phases 0–3) **done**. Plan: [internal-bets-plan_RU.md](./internal-bets-plan_RU.md). Step-by-step setup (RU): [bets-setup_RU.md](./bets-setup_RU.md).  
+> **Update (11 Oct 2026): CLOB trading works again.** The "maker address not allowed, please use the deposit wallet flow" blocker is resolved: trading goes through the user's **deposit wallet** with `POLY_1271` signatures. Verified with a real order (`status: live`, then cancelled) — see "CLOB v2 via deposit wallet" below and `tools/clob-v2-probe/`.
+> The mode is a flag: `BETS_ENABLED=true` — internal bets (`/api/bets/*`); `BETS_ENABLED=false` — Polymarket CLOB trading (`/api/orders/*`).
+
+Polymarket trading settles on **CTF Exchange (Polygon)**. The backend never holds users’ private keys: the browser (**Privy** embedded wallet) signs **EIP-712** typed data; the backend posts the signed order to the **CLOB**.
+
+## CLOB v2 via deposit wallet — ✅ working
+
+Since April–May 2026 Polymarket rejects orders whose `maker` is a plain EOA. Each user trades through a **deposit wallet**: a smart wallet owned by their Privy EOA. Its address is deterministic (CREATE2); it is deployed and operated gaslessly through the **Polymarket Relayer** and funded through the **Polymarket Bridge**.
+
+**Verified 2026-10-11** (test EOA `0x415a…` → deposit wallet `0xa1D1…bE57`): relayer deployment, USDT (Solana) top-up → 4.59 pUSD, approvals, API key, `POLY_1271` order accepted by CLOB (`status: live`) and cancelled. That order is the golden vector in `OrderBuilderTest`.
+
+### Working configuration
+
+| What | Value |
+|---|---|
+| API key (L1) | signed by the EOA, `POLY_ADDRESS` = EOA (unchanged) |
+| Order | `signatureType=3` (`POLY_1271`), `maker` = `signer` = deposit wallet |
+| Signature | the EOA signs an ERC-7739 `TypedDataSign` wrapper (order nested as `contents`); the backend packs the final 317-byte signature |
+| Collateral | **pUSD** `0xC011a7E1…` (wrapped USDC), not USDC.e |
+| Approvals | 10, in one batch: pUSD → both v2 exchanges, NegRiskAdapter, exchange v3; CTF → both v2 exchanges, NegRiskAdapter, both CTF collateral adapters; PositionManager → exchange v3 |
+| Deploy / approvals / fee / Claim / withdraw | EIP-712 `Batch`es signed by the EOA and executed by the relayer — no gas for the user |
+| Top-up | `POST bridge.polymarket.com/deposit` → EVM / Solana / Tron addresses; any supported stablecoin arrives as pUSD |
+
+### Components
+
+| Component | Where |
+|---|---|
+| POLY_1271 signing (ERC-7739 wrapper, `finalizeSignature`) | `trading/OrderBuilder.java` |
+| Relayer client: wallet address, `WALLET-CREATE`, `WALLET` batches, builder HMAC | `trading/relayer/RelayerClient.java`, `DepositWalletAddress`, `DepositWalletBatch`, `BuilderAuthSigner` |
+| Onboarding, approvals, generic batches | `trading/relayer/DepositWalletService.java`, `DepositWalletApprovals`, `PendingBatchCache` |
+| Bridge top-up and withdrawal | `trading/bridge/BridgeClient.java`, `FundingService`, `WithdrawService` |
+| Claim (pUSD via CTF collateral adapter) | `redeem/RedeemService.prepareBatch` |
+| Frontend: wallet, Top up, Withdraw | `features/wallet/DepositWalletSection.tsx`, `FundingPanel.tsx`, `WithdrawPanel.tsx`, `relayerTx.ts` |
+| Frontend: trade, Claim | `features/trading/ClobTradeSheet.tsx`, `PositionRow.tsx` |
+| Probe on the official TS SDKs | `tools/clob-v2-probe/` |
+
+### Endpoints (all require auth)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/wallet/deposit-wallet` | address, deployed, pUSD balance, 10 approvals, `readyToTrade` |
+| POST | `/api/wallet/deposit-wallet/deploy` | `WALLET-CREATE` via relayer |
+| POST | `/api/wallet/deposit-wallet/approvals/prepare` | batch with missing approvals |
+| POST | `/api/wallet/deposit-wallet/batches/submit` | `{batchHash, signature}` → relayer (approvals, fee, Claim, withdrawal) |
+| GET | `/api/wallet/deposit-wallet/transactions/{id}` | relayer transaction status |
+| GET | `/api/wallet/deposit-wallet/funding` | bridge addresses and top-up options |
+| GET | `/api/wallet/deposit-wallet/funding/deposits` | recent bridge top-ups |
+| GET | `/api/wallet/deposit-wallet/withdraw/options` | withdrawal destinations and balance |
+| POST | `/api/wallet/deposit-wallet/withdraw/prepare` | withdrawal batch (direct pUSD or via bridge) + bridge quote |
+| POST | `/api/positions/redeem/prepare-batch` | Claim batch |
+
+Batch calls are built **only by the server** (kept in Redis for 10 minutes); the client sends just the hash and signature, and the server checks the signer is the user's wallet. Builder credentials therefore cannot be used to relay arbitrary transactions.
+
+### Operator setup
+
+| Env | Purpose |
+|---|---|
+| `POLY_BUILDER_API_KEY`, `POLY_BUILDER_SECRET`, `POLY_BUILDER_PASSPHRASE` | builder key from polymarket.com → Settings → Builders; required for deploy, approvals, fee, Claim and withdrawal |
+| `POLY_BUILDER_CODE` | optional bytes32 builder code for bridge transfer attribution |
+| `RELAYER_URL`, `BRIDGE_URL` | default `relayer-v2.polymarket.com`, `bridge.polymarket.com` |
+| `BETS_ENABLED=false` | show CLOB trading instead of internal bets |
+
+Contract addresses live under `app.relayer.*` in `application.yml`.
+
+### User journey
+
+1. **Wallet → Connect Polymarket trading** — L1 signature, API key.
+2. **Trading wallet → Activate** — deploy the deposit wallet.
+3. **Approve** — one signature for all missing approvals.
+4. **Top up** — pick a network and token, send to the bridge address; pUSD arrives in a few minutes.
+5. **Trade** on a market page: sign the order; with a platform fee enabled, a second signature (pUSD transfer).
+6. **Claim** a resolved position — sign a batch, payout in pUSD.
+7. **Withdraw** — pUSD on Polygon, or a stablecoin on another network via the bridge (a quote is shown before signing).
+
+### Limitations
+
+- Only **CTF markets** (`clobTokenIds`, order version 2) are supported. Polymarket V2 positions (Router `0x1212…`, version-3 orders with `positionID`) are not handled.
+- The bridge is expensive for small amounts: withdrawing $3 → USDT (Tron) quotes ≈ 1.60 USDT. The UI shows the quote and a warning before signing.
+- Batches take the relayer nonce at prepare time: of two batches prepared at once, only one executes.
+- Bridge withdrawals are not tracked after the pUSD leaves the wallet; the UI shows the send and the estimated time only.
 
 ## Phase 1 vs Phase 2 (implemented in-repo)
 
@@ -44,22 +124,26 @@ sequenceDiagram
     participant POL as Polygon
     participant C as Polymarket CLOB
 
-    U->>B: POST /api/orders/prepare {conditionId, side, price, size}
-    B-->>U: typedData + orderHash + (optional) feeTx
+    participant R as Polymarket Relayer
+
+    U->>B: POST /api/orders/prepare {conditionId, side, price, size, signatureType: POLY_1271}
+    B->>B: maker = signer = deposit wallet (CREATE2 from the EOA)
+    B-->>U: typedData (ERC-7739 TypedDataSign) + orderHash + (optional) feeBatch
     U->>P: signTypedData(typedData)
-    P-->>U: signature
-    opt feeTx present
-        U->>P: sendTransaction(feeTx)  // USDC transfer to fee wallet
-        P->>POL: USDC.transfer(recipient, feeAmount)
-    end
+    P-->>U: 65-byte signature
     U->>B: POST /api/orders/submit {orderHash, signature, idempotencyKey}
-    B->>B: lookup prepared order in Redis
+    B->>B: load order from Redis, finalizeSignature → 317 bytes
     B->>C: POST /order with L2 + signed order
     C-->>B: {orderID, status}
     B-->>U: SubmittedOrderResponse
+    opt feeBatch present (after the order succeeds)
+        U->>P: signTypedData(feeBatch.typedData)
+        U->>B: POST /api/wallet/deposit-wallet/batches/submit
+        B->>R: WALLET batch: pUSD.transfer(recipient, fee)
+    end
 ```
 
-## End-to-end redeem flow (new)
+## End-to-end Claim flow (deposit wallet)
 
 ```mermaid
 sequenceDiagram
@@ -67,14 +151,15 @@ sequenceDiagram
     participant U as TMA UI
     participant P as Privy Wallet
     participant B as Backend
-    participant POL as Polygon (CTF)
+    participant R as Polymarket Relayer
 
-    U->>B: POST /api/positions/redeem/prepare {conditionId, outcomeIndex}
-    B-->>U: tx { to: CTF, data: redeemPositions(...), value: 0 }
-    U->>P: sendTransaction(tx)
-    P->>POL: redeemPositions(USDC, 0x0, conditionId, [1<<idx])
-    POL-->>U: USDC payout (winning index sets only)
-    U->>B: refetch /api/positions  // row drops once balance reflects payout
+    U->>B: POST /api/positions/redeem/prepare-batch {conditionId, negRisk}
+    B-->>U: Batch: CtfCollateralAdapter.redeemPositions(pUSD, 0x0, conditionId, [1, 2])
+    U->>P: signTypedData(batch.typedData)
+    U->>B: POST /api/wallet/deposit-wallet/batches/submit {batchHash, signature}
+    B->>R: WALLET batch from the deposit wallet
+    R-->>U: mined → pUSD credited to the deposit wallet
+    U->>B: refetch /api/positions and /api/wallet/deposit-wallet
 ```
 
 ---
@@ -97,7 +182,7 @@ Prefer selecting the exact **embedded Polygon wallet** that matches saved profil
 
 ### 3. **`signatureType` vs wallet model**
 
-Defaults use **EOA** (`signatureType = 0`). Polymarket often relies on proxy/Safe flow; embedded smart accounts may need **POLY_PROXY / POLY_GNOSIS_SAFE** aligned with docs.
+For new wallets CLOB accepts **`POLY_1271`** (deposit wallet) only, and `ClobTradeSheet` always sends it. EOA (`0`) is rejected with `CLOB_DEPOSIT_WALLET_REQUIRED`.
 
 ### 4. **`orderHash` vs CLOB bookkeeping**
 
@@ -125,7 +210,9 @@ Frontend wiring:
    - `POST /api/clob/auth/submit { signature, timestamp, nonce }`
 2. On order rejection with 401/403 from CLOB the frontend wipes creds (`DELETE /api/clob/auth`) and prompts to re-derive.
 
-## Approvals (USDC + Conditional Tokens)
+## Approvals (USDC + Conditional Tokens) — legacy EOA
+
+> This section covers the old EOA path (USDC.e, user-paid gas). Deposit wallets use `DepositWalletApprovals` (10 approvals, pUSD) and `/api/wallet/deposit-wallet/approvals/prepare`; `ApprovalsSection.tsx` is no longer rendered.
 
 Implemented in `backend/src/main/java/com/polymarket/tma/wallet`:
 
@@ -145,31 +232,9 @@ Polygon addresses (in `application.yml`):
 
 > **Note (CLOB v2 migration, 2026-04-22).** Polymarket migrated to a new CTF Exchange contract pair on 2026-04-22; the legacy v1 exchange (`0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E`) has been rejecting new orders with `400 "order_version_mismatch"` since 2026-04-30. Existing USDC / CTF approvals on the v1 contract are useless — users must re-approve the v2 exchange on first trade. See `OrderBuilder` for the new EIP-712 schema and [py-clob-client-v2](https://github.com/Polymarket/py-clob-client-v2) for the upstream reference.
 
-### Open external blocker — deposit-wallet flow (`CLOB_DEPOSIT_WALLET_REQUIRED`)
+### Deposit-wallet flow — resolved (October 2026)
 
-Even with the v2 EIP-712 schema correct, Polymarket CLOB rejects orders submitted with a raw EOA in `maker`/`signer`:
-
-```
-400 {"error":"maker address not allowed, please use the deposit wallet flow"}
-```
-
-The 2026-04-22 v2 migration effectively deprecated direct EOA trading. Every wallet now needs a Polymarket-side **deposit wallet**: a CREATE2 proxy contract derived from the EOA, with funds held by the proxy and orders signed via `signatureType=3` (POLY_1271, ERC-7739-wrapped). The proxy is *counterfactual* until the user does at least one trade through `polymarket.com` — then it is deployed and orders can be placed via API.
-
-As of mid-May 2026 the upstream story is still broken end-to-end:
-
-- [py-clob-client-v2 #51](https://github.com/Polymarket/py-clob-client-v2/issues/51) — original "EOA orders rejected" report, still open.
-- [py-clob-client-v2 #53](https://github.com/Polymarket/py-clob-client-v2/issues/53) — confirms the 2026-04-22 cutover deprecated EOA mode.
-- [py-clob-client-v2 #61](https://github.com/Polymarket/py-clob-client-v2/issues/61) — even with `signatureType=2` and a deployed proxy, fresh accounts get the same 400.
-- [py-clob-client-v2 #63](https://github.com/Polymarket/py-clob-client-v2/issues/63) — POLY_1271 (`signatureType=3`) is rejected because L1 API key auth ties the key to the EOA but the order signer is the proxy. Polymarket support has confirmed the rejection is "not expected" but no resolution has shipped.
-- [py-clob-client-v2 #64](https://github.com/Polymarket/py-clob-client-v2/issues/64) — diagnostic for "proxy not deployed yet" and notes that Privy / social-login wallets get a special TSS-wallet path.
-
-**What we do today:** `ClobOrderClient.mapClobError` translates the 400 into a structured `CLOB_DEPOSIT_WALLET_REQUIRED` code; `MarketTradeSheet`'s error toast renders a UI-friendly "open polymarket.com with this wallet, deposit USDC, place one small trade" message instead of the raw upstream blob. Beyond that, the flow is on hold until upstream stabilises.
-
-**What we'd need to add (when the upstream is fixed):**
-
-1. Resolve the user's deposit-wallet address from the EOA (either via Polymarket profile HTML — `proxyAddress` field — or a deterministic CREATE2 derivation, once Polymarket publishes the rules from #61).
-2. Switch `OrderBuilder` to `signatureType=3`, `maker = proxy`, `signer = EOA`, and produce an ERC-7739-wrapped POLY_1271 signature (Privy `signTypedData` is fine for the inner EIP-712, the wrapping is post-processing).
-3. Reset L1/L2 credentials when switching maker; cache invalidation already handles re-derivation on the wallet page.
+Since May 2026 CLOB answers an order with an EOA `maker` with `400 "maker address not allowed, please use the deposit wallet flow"` (mapped to `CLOB_DEPOSIT_WALLET_REQUIRED`). The py-clob-client-v2 issues (#51, #53, #61, #63, #64, #111, #116) mostly described Python SDK gaps. The working configuration was confirmed by the community in [#70](https://github.com/Polymarket/py-clob-client-v2/issues/70) and by our own probe on 2026-10-11: API key on the EOA, order `signatureType=3` with `maker = signer = deposit wallet`. No polymarket.com onboarding is needed — the wallet is deployed via the relayer. Details in "CLOB v2 via deposit wallet" at the top of this document.
 
 Frontend wiring (`ApprovalsSection.tsx`): calls `GET /api/wallet/approvals`, sends each `missing[i]` as a regular Polygon tx via Privy (`{to, data, value:'0x0', chainId:137}`), refetches afterwards.
 
@@ -181,7 +246,7 @@ Implemented in `backend/src/main/java/com/polymarket/tma/redeem`:
 - `RedeemService` — given `(conditionId, outcomeIndex)` + the caller's wallet, returns an `UnsignedTx` targeting `app.polygon.ctf-address`.
 - `RedeemController` — `POST /api/positions/redeem/prepare` (auth required).
 
-Frontend wiring (`PositionRow.tsx`): Claim button rendered when `position.redeemable === true`; on click → `prepareRedeem` → Privy `useSendTransaction` → on success the React-Query positions cache is invalidated. The CTF reverts harmlessly if the market is not actually resolved on-chain.
+Frontend wiring (`PositionRow.tsx`): Claim button rendered when `position.redeemable === true`. Positions held by the deposit wallet use `RedeemService.prepareBatch` (`POST /api/positions/redeem/prepare-batch`): the batch calls `redeemPositions(pUSD, 0x0, conditionId, [1, 2])` on **CtfCollateralAdapter** `0xAdA1…cE1f` or **NegRiskCtfCollateralAdapter** `0xadA2…eAab` (by the position's `negativeRisk`), paying out pUSD directly. The old `POST /api/positions/redeem/prepare` (EOA tx to CTF, paid in USDC.e) remains for legacy and is no longer called by the frontend.
 
 ## maker / signer per `signatureType`
 
@@ -192,8 +257,9 @@ Frontend wiring (`PositionRow.tsx`): Claim button rendered when `position.redeem
 | `EOA` (default) | wallet | wallet |
 | `POLY_PROXY` | required `makerAddress` (proxy) | wallet |
 | `POLY_GNOSIS_SAFE` | required `makerAddress` (Safe) | wallet |
+| `POLY_1271` (deposit wallet) | deposit wallet, derived from the wallet; `makerAddress` optional but must match (`MAKER_MISMATCH`) | deposit wallet (the EOA signs the ERC-7739 wrapper) |
 
-For non-EOA the request fails with `MAKER_REQUIRED` if `makerAddress` is missing, or `MAKER_EQUALS_SIGNER` if equal to the wallet. `OrderBuilder.build(maker, signer, req)` writes the two distinct fields into the EIP-712 message.
+For `POLY_PROXY` / `POLY_GNOSIS_SAFE` the request fails with `MAKER_REQUIRED` if `makerAddress` is missing, or `MAKER_EQUALS_SIGNER` if equal to the wallet. `OrderBuilder.build(maker, signer, req)` writes the two distinct fields into the EIP-712 message.
 
 ---
 
@@ -204,17 +270,17 @@ Polymarket replaced their CTF Exchange in April 2026; the new schema is what `Or
 | Field | EIP-712 type | Wire JSON type | Notes |
 |-------|--------------|----------------|-------|
 | `salt` | `uint256` | **JSON number** | Generated < 2^53 to survive float64 server-side parsing |
-| `maker` | `address` | string | Wallet (EOA) or proxy/Safe holding the funds |
-| `signer` | `address` | string | Always the wallet doing the signature |
+| `maker` | `address` | string | Who holds the funds: deposit wallet (POLY_1271), EOA, proxy or Safe |
+| `signer` | `address` | string | Who signs; for POLY_1271 the deposit wallet itself (validated via ERC-1271) |
 | `tokenId` | `uint256` | string | Decimal big-int — 256 bits, so JSON number would lose precision |
 | `makerAmount` / `takerAmount` | `uint256` | string | 6-decimal USDC or share units |
 | `side` | `uint8` (0/1) | `"BUY"`/`"SELL"` string | Wire encoding differs from signed digest — CLOB reconstructs server-side |
-| `signatureType` | `uint8` | **JSON number** | 0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE |
+| `signatureType` | `uint8` | **JSON number** | 0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE, 3=POLY_1271 |
 | `timestamp` | `uint256` | string ms | NEW in v2; replaces the v1 `nonce` for uniqueness |
 | `metadata` | `bytes32` | hex string | NEW in v2; defaults to `0x00…00` |
 | `builder` | `bytes32` | hex string | NEW in v2; defaults to `0x00…00` (set for builder attribution) |
 | `expiration` | — *(API-only)* | string seconds | Wire-only in v2; NOT part of the signed digest. Default `"0"` (no expiry) |
-| `signature` | — | string | Wallet signature lives **inside** the `order` object |
+| `signature` | — | string | Lives **inside** the `order` object. For POLY_1271: 317 bytes — `EOA signature ‖ app domain separator ‖ hash(order) ‖ Order type string ‖ uint16 length` |
 
 Top-level envelope:
 
@@ -263,6 +329,10 @@ A platform fee can be charged on every prepared order. It is **independent** of 
    - submits `{orderHash, signature}` to `POST /api/orders/submit`.
 4. `GET /api/fees` exposes the public fee config so the trade sheet can render the preview row (`Platform fee 0.50% · ≈ $0.025 USDC`) before the user signs anything.
 
+### Fee for deposit wallets (POLY_1271)
+
+For `POLY_1271` orders the `prepare` response carries **`feeBatch`** instead of `feeTx`: a `pUSD.transfer(recipient, fee)` batch from the deposit wallet. `ClobTradeSheet` signs it **after** the order is accepted and hands it to `batches/submit`; the relayer pays gas. Net effect for the user: two signatures per trade. If the fee fails, the order stands and the user sees a warning.
+
 ### Why a separate transfer (and not the CLOB `feeRateBps`)
 
 Polymarket’s `feeRateBps` field on the EIP-712 order goes to the **CLOB operator**, not to a third-party wallet, so it cannot route the platform’s share. The cleanest MVP is to issue a USDC transfer immediately after signing: it is a single extra Polygon tx, gas is paid by the user, and the operator wallet sees a clean `transfer(...)` per bet.
@@ -270,7 +340,7 @@ Polymarket’s `feeRateBps` field on the EIP-712 order goes to the **CLOB operat
 ### Limitations / follow-ups
 
 - The fee is charged at **submission**, not at fill. If the order never matches, the fee is still collected — that is the intended "bet placement" pricing model. If you need fill-only fees, switch to a custodial smart-contract escrow.
-- The fee tx is paid in MATIC for gas. Future work: sponsor gas via a paymaster (Privy session signers can do this).
+- EOA orders pay fee gas in POL; deposit-wallet orders need no gas (relayer).
 - `order_audit` does not yet record `fee_amount` / `fee_tx_hash`. Adding two columns + a Flyway migration is on the production checklist below.
 
 ## Geoblock — Polymarket CLOB region restrictions
@@ -316,8 +386,9 @@ The frontend trade flow is `prepare → sign → submit → fee tx`. If CLOB rej
    - polling `/api/positions` per active user every N minutes,
    - cross-reference `redeemable=true` and emit a Telegram Bot message via the existing `app.telegram.bot-token`,
    - debounce per `(user, conditionId)` so the same payout is announced once.
-3. **Approval auto-refresh** — schedule re-read after tx confirmation; surface tx hash to UI (already half-done in `ApprovalsSection`).
-4. **Cancel UI** — there is no list of open CLOB orders rendered to the user yet, so the wired `DELETE /api/orders/{id}` endpoint waits on a "My orders" screen.
+3. **End-to-end live check in the TMA** on a deposit wallet (activate → approvals → top-up → order → fee → Claim → withdraw) with production builder credentials.
+4. **Bridge withdrawal tracking** via `/status/{address}`; remove legacy (`ApprovalsSection.tsx`, `/api/wallet/approvals`, `/redeem/prepare`).
+5. **Cancel UI** — there is no list of open CLOB orders rendered to the user yet, so the wired `DELETE /api/orders/{id}` endpoint waits on a "My orders" screen.
 
 ---
 

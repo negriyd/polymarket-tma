@@ -31,7 +31,8 @@ class TelegramInitDataValidatorTest {
                 new AppProperties.Polymarket("", "", "", "", Duration.ZERO, Duration.ZERO, Duration.ZERO, Duration.ZERO),
                 new AppProperties.Polygon("", "", "", "", ""),
                 new AppProperties.Privy("", ""),
-                new AppProperties.Fees(0, "")
+                new AppProperties.Fees(0, ""),
+                new AppProperties.Bets(false, "", "", "", 500, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, 15, 24, 5)
         );
         return new TelegramInitDataValidator(props, mapper);
     }

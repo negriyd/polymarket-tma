@@ -27,6 +27,7 @@ class PositionsControllerTest {
     @Mock PositionsClient client;
     @Mock AppUserRepository userRepo;
     @Mock FavoriteMarketRepository favoriteRepo;
+    @Mock com.polymarket.tma.trading.relayer.RelayerClient relayer;
 
     @InjectMocks PositionsController controller;
 
@@ -44,7 +45,8 @@ class PositionsControllerTest {
 
         PositionsClient.Position posA = sample("0xcid-a", "asset-a");
         PositionsClient.Position posB = sample("0xcid-b", "asset-b");
-        when(client.getPositions("0xabc")).thenReturn(Mono.just(List.of(posA, posB)));
+        when(relayer.depositWalletAddress("0xabc")).thenReturn("0xdeposit");
+        when(client.getPositions("0xdeposit")).thenReturn(Mono.just(List.of(posA, posB)));
 
         AuthPrincipal principal = new AuthPrincipal(7L, null);
 

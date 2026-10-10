@@ -61,6 +61,7 @@ On Server
 #      TRADING_FEE_BPS=0                 (set >0 + recipient to enable monetization)
 #      TRADING_FEE_RECIPIENT=
 #    See deploy/.env.example + deploy/.env.prebuilt.example for the full list.
+#    Internal bets (PRIMARY): BETS_ENABLED=true + BETS_TREASURY_* — see docs/bets-setup_RU.md
 #
 # 3) Pull + run.
 
@@ -77,4 +78,4 @@ curl -s http://localhost:8080/api/diagnostics/cf-trace | python3 -c "import sys,
 # Sanity check on country code (informational only — passing /clob-post-probe is what matters).
 
 # Stop:
-docker-compose -f docker-compose.prebuilt.yml --profile full down
+  docker-compose -f docker-compose.prebuilt.yml --profile full down

@@ -18,6 +18,7 @@ import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.trading.OrderBuilder.BuiltOrder;
 import com.polymarket.tma.trading.clob.ClobCredentialsStore;
 import com.polymarket.tma.trading.dto.OrderDtos;
+import com.polymarket.tma.trading.relayer.DepositWalletService;
 import com.polymarket.tma.trading.repo.OrderAuditRepository;
 import reactor.core.publisher.Mono;
 import java.math.BigDecimal;
@@ -49,6 +50,7 @@ class TradingServiceMakerResolutionTest {
     @Mock private ClobCredentialsStore credentialsStore;
     @Mock private FeeService fees;
     @Mock private MarketService marketService;
+    @Mock private DepositWalletService depositWallets;
 
     private TradingService service;
 
@@ -68,7 +70,7 @@ class TradingServiceMakerResolutionTest {
         // Default: regular (non-negRisk) markets unless overridden in a test.
         lenient().when(marketService.get(any())).thenReturn(Mono.just(stubMarket(false)));
 
-        service = new TradingService(builder, pending, userRepo, auditRepo, clob, credentialsStore, fees, marketService);
+        service = new TradingService(builder, pending, userRepo, auditRepo, clob, credentialsStore, fees, marketService, depositWallets);
     }
 
     @Test
@@ -117,6 +119,45 @@ class TradingServiceMakerResolutionTest {
                 .hasMessageContaining("differ");
 
         verify(builder, never()).build(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void poly1271DerivesDepositWalletAsMaker() {
+        String depositWallet = "0x0000000000000000000000000000000000000dec";
+        when(depositWallets.depositWalletOf(WALLET)).thenReturn(depositWallet);
+        OrderDtos.PrepareOrderRequest req = req(OrderDtos.SignatureType.POLY_1271, null);
+
+        service.prepare(1L, req);
+
+        verify(builder).build(eq(depositWallet), eq(WALLET), eq(req), eq(false));
+    }
+
+    @Test
+    void poly1271RejectsMakerOtherThanDepositWallet() {
+        when(depositWallets.depositWalletOf(WALLET)).thenReturn("0x0000000000000000000000000000000000000dec");
+        OrderDtos.PrepareOrderRequest req = req(OrderDtos.SignatureType.POLY_1271, PROXY);
+
+        assertThatThrownBy(() -> service.prepare(1L, req))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("deposit wallet");
+
+        verify(builder, never()).build(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void poly1271ChargesPlatformFeeFromDepositWalletBatch() {
+        when(depositWallets.depositWalletOf(WALLET)).thenReturn("0x0000000000000000000000000000000000000dec");
+        var tx = new com.polymarket.tma.wallet.ApprovalDtos.UnsignedTx("TRADING_FEE_TRANSFER", "0xusdc", "0x", "0x0", 137);
+        when(fees.quote(any())).thenReturn(new FeeService.FeeQuote(java.math.BigInteger.valueOf(25_000), 50, "0xfee", tx));
+        var batch = new com.polymarket.tma.trading.relayer.DepositWalletDtos.PreparedBatch("0xhash", Map.of(), 1);
+        when(depositWallets.prepareCollateralTransfer(1L, "TRADING_FEE", "0xfee", java.math.BigInteger.valueOf(25_000)))
+                .thenReturn(batch);
+
+        var resp = service.prepare(1L, req(OrderDtos.SignatureType.POLY_1271, null));
+
+        assertThat(resp.feeBatch()).isSameAs(batch);
+        assertThat(resp.feeTx()).as("no EOA transfer for deposit-wallet orders").isNull();
+        assertThat(resp.feeAmountUsdc()).isEqualTo("0.025");
     }
 
     @Test

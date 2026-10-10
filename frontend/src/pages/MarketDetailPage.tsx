@@ -9,6 +9,7 @@ import { hapticImpact } from '@/lib/telegram/webApp';
 import { isPriceChangeMessage } from '@/lib/ws/livePayload';
 import { isWalletConfigured } from '@/features/wallet/useWallet';
 import { MarketTradeSheet } from '@/features/trading/MarketTradeSheet';
+import { ClobTradeSheet } from '@/features/trading/ClobTradeSheet';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
@@ -35,7 +36,22 @@ export function MarketDetailPage() {
     queryKey: ['favorites'],
     queryFn: api.listFavorites,
   });
+
+  const betsCfg = useQuery({
+    queryKey: ['bets-config'],
+    queryFn: api.getBetsConfig,
+    staleTime: 5 * 60_000,
+  });
+
   const cid = market.data?.conditionId;
+
+  const betPool = useQuery({
+    queryKey: ['bet-pool', cid ?? ''],
+    queryFn: () => api.getBetPool(cid!),
+    enabled: !!cid && betsCfg.data?.enabled === true,
+    staleTime: 15_000,
+  });
+
   const isFavorite =
     cid != null && (favorites.data?.some((f) => f.conditionId === cid) ?? false);
 
@@ -81,8 +97,8 @@ export function MarketDetailPage() {
   const tokens = m.clobTokenIds ?? [];
   const yesTok = yesIdx >= 0 ? tokens[yesIdx] : tokens[0];
   const noTok = noIdx >= 0 ? tokens[noIdx] : tokens[1];
-  const canTradeYes = !!yesTok;
-  const canTradeNo = !!noTok;
+  const canTradeYes = betsCfg.data?.enabled === true || !!yesTok;
+  const canTradeNo = betsCfg.data?.enabled === true || !!noTok;
 
   const openTrade = (side: 'yes' | 'no') => {
     hapticImpact('light');
@@ -157,6 +173,7 @@ export function MarketDetailPage() {
           accent="emerald"
           disabled={!canTradeYes}
           onPress={() => openTrade('yes')}
+          actionLabel={betsCfg.data?.enabled ? 'Bet YES' : 'Buy YES'}
         />
         <PriceTile
           label="NO"
@@ -164,17 +181,47 @@ export function MarketDetailPage() {
           accent="rose"
           disabled={!canTradeNo}
           onPress={() => openTrade('no')}
+          actionLabel={betsCfg.data?.enabled ? 'Bet NO' : 'Buy NO'}
         />
       </section>
 
-      {isWalletConfigured() && tradeOutcome != null && (
-        <MarketTradeSheet
-          market={m}
-          outcome={tradeOutcome}
-          open
-          onClose={() => setTradeOutcome(null)}
-        />
+      {betsCfg.data?.enabled && betPool.data && (
+        <section className="rounded-xl bg-tg-secondary p-3">
+          <h2 className="text-sm font-semibold text-tg-text">Betting pool</h2>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+            {betPool.data.sides.map((s) => (
+              <div key={s.outcomeIndex} className="rounded-lg bg-tg-bg/40 px-2 py-2">
+                <p className="font-medium text-tg-text">{s.outcomeLabel}</p>
+                <p className="tabular-nums text-tg-hint">${s.totalUsdc}</p>
+                <p className="text-[10px] text-tg-hint">
+                  {(Number(s.impliedProbability) * 100).toFixed(1)}% implied
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-tg-hint">
+            Total ${betPool.data.totalPoolUsdc} · fee {(betPool.data.platformFeeBps / 100).toFixed(2)}% at
+            payout
+          </p>
+        </section>
       )}
+
+      {isWalletConfigured() && tradeOutcome != null &&
+        (betsCfg.data?.enabled ? (
+          <MarketTradeSheet
+            market={m}
+            outcome={tradeOutcome}
+            open
+            onClose={() => setTradeOutcome(null)}
+          />
+        ) : (
+          <ClobTradeSheet
+            market={m}
+            outcome={tradeOutcome}
+            open
+            onClose={() => setTradeOutcome(null)}
+          />
+        ))}
 
       <section className="grid grid-cols-3 gap-2">
         <Stat label="Vol 24h" value={fmt(m.volume24hr ?? m.volume24h)} />
@@ -361,29 +408,34 @@ function PriceTile({
   accent,
   onPress,
   disabled,
+  actionLabel,
 }: {
   label: string;
   price?: number;
   accent: 'emerald' | 'rose';
   onPress?: () => void;
   disabled?: boolean;
+  actionLabel?: string;
 }) {
   const pct = price == null ? null : Math.round(price * 100);
   const accentClass = accent === 'emerald' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500';
   const className = `rounded-xl px-3 py-3 text-center ${accentClass} ${
     onPress && !disabled ? 'cursor-pointer transition active:scale-[0.98]' : ''
   } ${disabled ? 'opacity-50' : ''}`;
+  const cta = actionLabel ?? `Buy ${label}`;
   return (
     <button
       type="button"
       className={className}
       onClick={onPress}
       disabled={disabled || !onPress}
-      aria-label={disabled || !onPress ? `${label} price` : `Buy ${label}`}
+      aria-label={disabled || !onPress ? `${label} price` : cta}
     >
       <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{pct == null ? '—' : `${pct}%`}</p>
-      {onPress && !disabled && <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">Tap to buy</p>}
+      {onPress && !disabled && (
+        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">Tap to {cta.toLowerCase()}</p>
+      )}
     </button>
   );
 }

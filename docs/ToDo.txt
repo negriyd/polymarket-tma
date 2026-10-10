@@ -1,30 +1,45 @@
 Шаги, чтобы добить сквозной сценарий для пользователя (RU)
-Статус на 23 мая 2026 — обновлён после итерации redeem + cancel + spread-fee + миграции на CLOB v2.
+Статус на 24 мая 2026 — MVP внутренних ставок (Фазы 0–3) готов. Инструкция: docs/bets-setup_RU.md
+Статус на 11 октября 2026 — CLOB-торговля через deposit wallet (POLY_1271) реализована и проверена
+реальным ордером. Подробности: docs/trading_RU.md, раздел «CLOB v2 через deposit wallet».
+Режим: BETS_ENABLED=true — внутренние ставки, BETS_ENABLED=false — Polymarket CLOB.
 
-Z. Миграция на Polymarket CLOB v2  [PARTIAL — 2026-05-23]
-  • Polymarket с 22 апреля 2026 переключили CTF Exchange на новую схему ордеров.
-    Старый v1-контракт (0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E) с 30 апреля
-    отдаёт 400 "order_version_mismatch" — все интеграторы 0.34.6-стека сломаны.
-  • [DONE] Поменяли OrderBuilder под v2 EIP-712 (domain version="2"; struct: salt,
-    maker, signer, tokenId, makerAmount, takerAmount, side, signatureType, timestamp,
-    metadata, builder — без nonce/feeRateBps/taker).
-  • [DONE] ClobOrderClient → новый JSON envelope: owner = API key UUID,
-    deferExec/postOnly на верхнем уровне, signature внутри order, salt/signatureType
-    — JSON number.
-  • [DONE] application.yml: ctf-exchange-address (v2) = 0xE111180000…E1f4F00237545B87B996B,
-    neg-risk-ctf-exchange-address (v2) = 0xe2222d279d744050d28e00520010520000310F59.
-  • [DONE] Регрессионные тесты: OrderBuilderTest и ClobOrderClientPayloadTest
-    (включая mapping CLOB_ORDER_VERSION_MISMATCH и CLOB_DEPOSIT_WALLET_REQUIRED).
-  • [BLOCKED — UPSTREAM] Polymarket CLOB v2 фактически отключил прямую торговлю
-    с EOA. На корректно собранный v2-ордер сервер отвечает 400 "maker address not
-    allowed, please use the deposit wallet flow". Чтобы торговать через API,
-    кошелёк должен сначала пройти онбординг на polymarket.com (депозит + одна
-    маленькая сделка) — это деплоит CREATE2-прокси deposit wallet, после чего
-    ордера должны идти с signatureType=3 (POLY_1271, ERC-7739-обёртка),
-    maker=proxy, signer=EOA. На середину мая 2026 у Polymarket этот путь до сих
-    пор сломан (issues #51, #53, #61, #63, #64 в py-clob-client-v2). Ждём фикса
-    апстрима. Пока бэкенд маппит 400 в CLOB_DEPOSIT_WALLET_REQUIRED, фронт
-    показывает понятный тост.
+F. Внутренние ставки (parimutuel) — режим BETS_ENABLED=true  [Фазы 0–3 DONE — см. docs/internal-bets-plan_RU.md, docs/bets-setup_RU.md]
+  • [DONE] 0.1 Модель: parimutuel (пул), только YES/NO в MVP
+  • [DONE] 0.2 Резолв: Gamma + grace 24h + manual admin
+  • [DONE] 0.3 Выплаты: internal balance + on-chain withdraw (Claim)
+  • [DONE] 0.4 Юридические риски зафиксированы (counsel до prod — TODO)
+  • [DONE] 0.5 Docs: CLOB deprecated, internal bets primary
+  • [DONE] Фаза 1: backend /api/bets/* (prepare, confirm, pool, config, mine, DB migration V2)
+  • [DONE] Фаза 2: resolution job, payout calculator, withdraw, admin resolve/cancel
+  • [DONE] Фаза 3: frontend Bet flow, pool UI, My bets + balance + withdraw, CLOB UI hidden when bets on
+  • [TODO] Фаза 4: prod RPC, treasury monitoring, notifications, metrics
+
+Z. Миграция на Polymarket CLOB v2  [DONE — работает через deposit wallet, проверено 11.10.2026]
+  • Polymarket с 22 апреля 2026 переключили CTF Exchange на новую схему ордеров (v1 отдаёт
+    400 "order_version_mismatch"), а с мая отклоняют ордера с EOA-maker:
+    400 "maker address not allowed, please use the deposit wallet flow".
+  • [DONE] OrderBuilder под v2 EIP-712 (domain version="2", поля salt…builder) + новый JSON envelope.
+  • [DONE] Проверка на официальных TS SDK (tools/clob-v2-probe): deposit wallet развёрнут через
+    relayer, пополнен через bridge (USDT Solana → 4.59 pUSD), 8 → 10 approvals, ордер POLY_1271
+    принят CLOB (status: live) и отменён. Рабочая схема: API key на EOA, signatureType=3,
+    maker = signer = deposit wallet, подпись EOA в обёртке ERC-7739 (317 байт).
+  • [DONE] OrderBuilder: POLY_1271, TypedDataSign-обёртка для Privy, finalizeSignature;
+    тесты на принятом CLOB ордере (байт в байт).
+  • [DONE] Relayer-клиент (trading/relayer): CREATE2-адрес кошелька, WALLET-CREATE, WALLET-пакеты,
+    builder HMAC; DepositWalletService + эндпоинты /api/wallet/deposit-wallet/*.
+  • [DONE] Пополнение и вывод через Polymarket Bridge (trading/bridge): /funding, /withdraw.
+  • [DONE] Комиссия платформы: feeBatch (pUSD с deposit wallet) вместо feeTx с EOA.
+  • [DONE] Claim: пакет через CtfCollateralAdapter / NegRiskCtfCollateralAdapter, выплата в pUSD.
+  • [DONE] /api/positions ищет позиции по адресу deposit wallet.
+  • [DONE] Фронтенд: DepositWalletSection (Activate / Approve / Top up / Withdraw), ClobTradeSheet,
+    Claim через пакет.
+  • [TODO] Живая проверка всей цепочки в TMA с боевыми builder-ключами (POLY_BUILDER_* в deploy/.env).
+  • [TODO] Перевыпустить builder-ключ: прежний попал в историю чата при проверке.
+  • [TODO] Отслеживать вывод через мост по /status/{адрес}; сейчас видно только отправку pUSD.
+  • [TODO] Позиции Polymarket V2 (Router 0x1212…, ордера версии 3 с positionID) не поддержаны.
+  • [TODO] Удалить legacy EOA-путь: ApprovalsSection.tsx, GET /api/wallet/approvals,
+    POST /api/positions/redeem/prepare.
 
 A. Ставки (ордера)
   1. [DONE] typedData в формате Privy/viem/CLOB. OrderBuilder сериализует все uint256/uint8 как
@@ -34,10 +49,12 @@ A. Ставки (ордера)
   3. [DONE] L1 + L2 для каждого POST /order. Backend: ClobAuthBuilder, ClobApiKeyClient,
      ClobCredentialsStore (Redis, TTL 30 дней), ClobL2Signer (HMAC-SHA256 base64 url-safe).
      Frontend: ClobAuthSection.tsx — кнопка «Connect Polymarket trading».
-  4. [DONE] Ончейн approvals (USDC + CTF setApprovalForAll) — backend ApprovalService +
+  4. [DONE → LEGACY] Ончейн approvals (USDC + CTF setApprovalForAll) — backend ApprovalService +
      /api/wallet/approvals; frontend ApprovalsSection.tsx → Privy useSendTransaction.
+     Заменено на 10 approvals deposit wallet одним пакетом через relayer (см. Z).
   5. [DONE] signatureType + maker/signer. PrepareOrderRequest.makerAddress, ошибки
-     MAKER_REQUIRED / MAKER_EQUALS_SIGNER, матрица EOA / POLY_PROXY / POLY_GNOSIS_SAFE.
+     MAKER_REQUIRED / MAKER_EQUALS_SIGNER, матрица EOA / POLY_PROXY / POLY_GNOSIS_SAFE / POLY_1271
+     (для POLY_1271 maker вычисляется из EOA; MAKER_MISMATCH при чужом адресе).
   6. [DONE] Cancel ордера. DELETE /api/orders/{orderId} → CLOB DELETE /order с L2-headers
      (ClobOrderClient.cancel + TradingService.cancel). UI «My orders» пока не реализован,
      но сам endpoint готов.
@@ -66,6 +83,8 @@ D. Получение выигрыша (redeem)
      POST /api/positions/redeem/prepare {conditionId, outcomeIndex}.
   3. [DONE] Frontend Claim — кнопка прямо в карточке позиции (PositionRow.tsx) когда
      redeemable=true. Privy useSendTransaction → invalidate ['positions'].
+  4. [DONE] Claim для deposit wallet: POST /api/positions/redeem/prepare-batch → пакет
+     redeemPositions(pUSD, 0x0, conditionId, [1,2]) на CTF collateral adapter → relayer.
 
 E. Монетизация — конфигурируемый spread / комиссия
   1. [DONE] app.fees.spread-bps + app.fees.recipient-address в application.yml.
@@ -75,14 +94,16 @@ E. Монетизация — конфигурируемый spread / комис
      MarketTradeSheet после подписи ордера шлёт feeTx через Privy и затем submit.
   4. [DONE] Публичный GET /api/fees — frontend показывает превью «Platform fee 0.50% · ≈ $0.025 USDC»
      до подписания.
+  6. [DONE] Для POLY_1271: prepare отдаёт feeBatch (pUSD.transfer с deposit wallet через relayer);
+     ClobTradeSheet подписывает его после успешного ордера (вторая подпись).
   5. [TODO] Добавить колонки fee_amount / fee_recipient / fee_tx_hash в order_audit
      (Flyway V2__order_audit_fees.sql) — для ретро-аналитики и прозрачности.
 
 Дальнейшие итерации (приоритет):
-  1. C. Уведомления о redeem (poller + Telegram Bot).
-  2. UI «My orders» поверх готового DELETE /api/orders/{id}.
-  3. order_audit fee columns + дашборд по комиссии (Prometheus → Grafana).
-  4. Sponsor gas через Privy session signers / paymaster (улучшение UX оплаты комиссии).
+  1. F. Фаза 1 — internal bets backend (/api/bets/prepare, confirm, mine).
+  2. F. Фаза 2–3 — resolution, payouts, frontend bet sheet.
+  3. C. Уведомления о резолве / выигрыше (poller + Telegram Bot).
+  4. order_audit fee columns + дашборд по комиссии (Prometheus → Grafana).
 
 Следующие шаги (что я бы делал дальше)
 Уведомления о redeem (C) — @Scheduled job каждые 5 минут пробегает активных пользователей с walletAddress, фильтрует redeemable=true, дедуп по (telegramUserId, conditionId) в Redis, шлёт сообщение через уже сконфигурированный app.telegram.bot-token. Минимум кода, максимум retention.

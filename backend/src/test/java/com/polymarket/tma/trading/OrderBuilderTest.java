@@ -1,6 +1,7 @@
 package com.polymarket.tma.trading;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.web3j.crypto.Keys;
+import org.web3j.crypto.Sign;
 import org.web3j.crypto.StructuredDataEncoder;
 import org.web3j.utils.Numeric;
 
@@ -295,5 +298,114 @@ class OrderBuilderTest {
         var message = (java.util.Map<String, Object>) built.typedData().get("message");
         assertThat(message.get("maker")).isEqualTo(wallet);
         assertThat(message.get("signer")).isEqualTo(wallet);
+    }
+
+    // --- POLY_1271 (Deposit Wallet) -------------------------------------------------------
+    // Golden vector: a post-only order that Polymarket CLOB accepted ({"status":"live"}) on
+    // 2026-10-11, produced by @polymarket/clob-client-v2 1.2.0 via tools/clob-v2-probe.
+    private static final String ACCEPTED_EOA = "0x415aE735eB964da56C11D0a53F0f082b85FcbEA5";
+    private static final String ACCEPTED_DEPOSIT_WALLET = "0xa1D17A5546aD9166Cb14071c36a5741d812CbE57";
+    private static final String ACCEPTED_TOKEN_ID =
+            "44209743674197113266585715184635307448475315082310517438746045703276049306333";
+    private static final java.math.BigInteger ACCEPTED_SALT = new java.math.BigInteger("610605137369");
+    private static final long ACCEPTED_TIMESTAMP_MS = 1791670958468L;
+    /** CLOB's {@code orderID} == the order's EIP-712 digest. */
+    private static final String ACCEPTED_ORDER_ID =
+            "0x207fe39b479c87b4160370f4bd4e6f9dcc404c0aedd3ece8bbe72b63d34c855b";
+    private static final String ACCEPTED_SIGNATURE = "0x"
+            + "d708769361f06231cede52eeb8ecdb257180f95613d5ffaaa5f4b1459b52cc9c"
+            + "348b9c4a4407edf991c192d7c0136d4481ab131914e2cee366974a6e76ce1c1f1c"
+            + "3264e159346253e26a64e00b69032db0e7d32f94628de3e6eecb50304d7af3d2"
+            + "71b9a678d9cbc474aef77b2738e64478f2d590d492d748f0569d2f151f85c1f3"
+            + "4f726465722875696e743235362073616c742c61646472657373206d616b6572"
+            + "2c61646472657373207369676e65722c75696e7432353620746f6b656e49642c"
+            + "75696e74323536206d616b6572416d6f756e742c75696e743235362074616b65"
+            + "72416d6f756e742c75696e743820736964652c75696e7438207369676e617475"
+            + "7265547970652c75696e743235362074696d657374616d702c62797465733332"
+            + "206d657461646174612c62797465733332206275696c6465722900ba";
+
+    private OrderBuilder.BuiltOrder buildAcceptedPoly1271Order() {
+        var req = new OrderDtos.PrepareOrderRequest(
+                "0xabc",
+                ACCEPTED_TOKEN_ID,
+                OrderDtos.Side.BUY,
+                new BigDecimal("0.01"),
+                new BigDecimal("5"),
+                null,
+                OrderDtos.SignatureType.POLY_1271,
+                null,
+                ACCEPTED_DEPOSIT_WALLET);
+        return orderBuilder.build(ACCEPTED_DEPOSIT_WALLET, ACCEPTED_EOA, req, false,
+                ACCEPTED_SALT, ACCEPTED_TIMESTAMP_MS);
+    }
+
+    @Test
+    void poly1271OrderHashMatchesClobOrderId() {
+        OrderBuilder.BuiltOrder built = buildAcceptedPoly1271Order();
+
+        assertThat(built.orderHash()).isEqualTo(ACCEPTED_ORDER_ID);
+        assertThat(built.wireOrder().get("maker")).isEqualTo(ACCEPTED_DEPOSIT_WALLET);
+        assertThat(built.wireOrder().get("signer"))
+                .as("POLY_1271: signer is the deposit wallet, not the EOA")
+                .isEqualTo(ACCEPTED_DEPOSIT_WALLET);
+        assertThat(built.wireOrder().get("signatureType")).isEqualTo("3");
+        assertThat(built.wireOrder().get("makerAmount")).isEqualTo("50000");
+        assertThat(built.wireOrder().get("takerAmount")).isEqualTo("5000000");
+    }
+
+    @Test
+    void poly1271WalletSignsTypedDataSignWrapper() throws Exception {
+        OrderBuilder.BuiltOrder built = buildAcceptedPoly1271Order();
+
+        assertThat(built.typedData().get("primaryType")).isEqualTo("TypedDataSign");
+        @SuppressWarnings("unchecked")
+        var message = (java.util.Map<String, Object>) built.typedData().get("message");
+        assertThat(message.get("name")).isEqualTo("DepositWallet");
+        assertThat(message.get("version")).isEqualTo("1");
+        assertThat(message.get("verifyingContract")).isEqualTo(ACCEPTED_DEPOSIT_WALLET);
+        var expectedContents = new java.util.LinkedHashMap<>(built.wireOrder());
+        expectedContents.remove("expiration");
+        assertThat(message.get("contents")).isEqualTo(expectedContents);
+
+        // The inner ECDSA signature of the accepted order must recover to the EOA over the
+        // digest of exactly the typed data we hand to Privy.
+        byte[] digest = new StructuredDataEncoder(objectMapper.writeValueAsString(built.typedData()))
+                .hashStructuredData();
+        byte[] sig = Numeric.hexStringToByteArray(ACCEPTED_SIGNATURE.substring(0, 2 + 130));
+        var signatureData = new Sign.SignatureData(sig[64],
+                java.util.Arrays.copyOfRange(sig, 0, 32), java.util.Arrays.copyOfRange(sig, 32, 64));
+        String recovered = "0x" + Keys.getAddress(Sign.signedMessageHashToKey(digest, signatureData));
+        assertThat(recovered).isEqualToIgnoringCase(ACCEPTED_EOA);
+    }
+
+    @Test
+    void poly1271FinalizeSignatureReproducesAcceptedSignatureByteForByte() {
+        OrderBuilder.BuiltOrder built = buildAcceptedPoly1271Order();
+        String walletSignature = ACCEPTED_SIGNATURE.substring(0, 2 + 130);
+
+        String packed = orderBuilder.finalizeSignature(built, walletSignature);
+
+        assertThat(packed).isEqualTo(ACCEPTED_SIGNATURE);
+        assertThat((packed.length() - 2) / 2).isEqualTo(317);
+    }
+
+    @Test
+    void poly1271RejectsNon65ByteWalletSignature() {
+        OrderBuilder.BuiltOrder built = buildAcceptedPoly1271Order();
+
+        assertThatThrownBy(() -> orderBuilder.finalizeSignature(built, ACCEPTED_SIGNATURE))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("65-byte");
+    }
+
+    @Test
+    void finalizeSignatureIsPassThroughForEoa() {
+        var req = new OrderDtos.PrepareOrderRequest(
+                "0xabc", "100", OrderDtos.Side.BUY, new BigDecimal("0.4"), new BigDecimal("1"),
+                null, OrderDtos.SignatureType.EOA, null, null);
+        OrderBuilder.BuiltOrder built = orderBuilder.build("0x0000000000000000000000000000000000000003", req);
+
+        assertThat(orderBuilder.finalizeSignature(built, "0xabcdef")).isEqualTo("0xabcdef");
+        assertThat(built.typedData().get("primaryType")).isEqualTo("Order");
     }
 }

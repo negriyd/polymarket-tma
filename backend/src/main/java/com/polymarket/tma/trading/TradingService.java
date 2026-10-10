@@ -12,6 +12,8 @@ import com.polymarket.tma.trading.clob.ClobCredentials;
 import com.polymarket.tma.trading.clob.ClobCredentialsStore;
 import com.polymarket.tma.trading.dto.OrderDtos;
 import com.polymarket.tma.trading.entity.OrderAudit;
+import com.polymarket.tma.trading.relayer.DepositWalletDtos;
+import com.polymarket.tma.trading.relayer.DepositWalletService;
 import com.polymarket.tma.trading.repo.OrderAuditRepository;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -38,6 +40,7 @@ public class TradingService {
     private final ClobCredentialsStore credentialsStore;
     private final FeeService fees;
     private final MarketService marketService;
+    private final DepositWalletService depositWallets;
 
     public TradingService(OrderBuilder builder,
                           PendingOrderCache pending,
@@ -46,7 +49,8 @@ public class TradingService {
                           ClobOrderClient clob,
                           ClobCredentialsStore credentialsStore,
                           FeeService fees,
-                          MarketService marketService) {
+                          MarketService marketService,
+                          DepositWalletService depositWallets) {
         this.builder = builder;
         this.pending = pending;
         this.userRepo = userRepo;
@@ -55,6 +59,7 @@ public class TradingService {
         this.credentialsStore = credentialsStore;
         this.fees = fees;
         this.marketService = marketService;
+        this.depositWallets = depositWallets;
     }
 
     public OrderDtos.TypedDataResponse prepare(long userId, OrderDtos.PrepareOrderRequest req) {
@@ -75,10 +80,17 @@ public class TradingService {
                 domain == null ? "?" : domain.get("verifyingContract"));
         pending.put(userId, built);
         FeeQuote fee = fees.quote(req);
+        DepositWalletDtos.PreparedBatch feeBatch = null;
+        if (fee != null && req.signatureType() == OrderDtos.SignatureType.POLY_1271) {
+            // Funds live in the deposit wallet (pUSD), and the EOA has no gas: charge from there.
+            feeBatch = depositWallets.prepareCollateralTransfer(
+                    userId, "TRADING_FEE", fee.recipient(), fee.amountMicroUsdc());
+        }
         return new OrderDtos.TypedDataResponse(
                 built.orderHash(),
                 built.typedData(),
-                fee == null ? null : fee.tx(),
+                fee == null || feeBatch != null ? null : fee.tx(),
+                feeBatch,
                 fee == null ? null : new BigDecimal(fee.amountMicroUsdc())
                         .divide(USDC_DECIMALS_FACTOR).toPlainString(),
                 fee == null ? null : fee.spreadBps());
@@ -114,16 +126,27 @@ public class TradingService {
      * Resolve the {@code maker} for the EIP-712 order:
      * <ul>
      *     <li>{@link OrderDtos.SignatureType#EOA} (default): always the wallet address (maker == signer).</li>
+     *     <li>{@code POLY_1271}: the user's deposit wallet, derived from the wallet (CREATE2). An explicit
+     *         {@code makerAddress} is optional but must match.</li>
      *     <li>{@code POLY_PROXY} / {@code POLY_GNOSIS_SAFE}: requires {@code makerAddress} in the request
      *         (the Polymarket proxy / Safe holding the funds). It must differ from the signer.</li>
      * </ul>
      */
-    private static String resolveMaker(AppUser user, OrderDtos.PrepareOrderRequest req) {
+    private String resolveMaker(AppUser user, OrderDtos.PrepareOrderRequest req) {
         OrderDtos.SignatureType type = req.signatureType() == null
                 ? OrderDtos.SignatureType.EOA
                 : req.signatureType();
         if (type == OrderDtos.SignatureType.EOA) {
             return user.getWalletAddress();
+        }
+        if (type == OrderDtos.SignatureType.POLY_1271) {
+            String depositWallet = depositWallets.depositWalletOf(user.getWalletAddress());
+            if (req.makerAddress() != null && !req.makerAddress().isBlank()
+                    && !req.makerAddress().equalsIgnoreCase(depositWallet)) {
+                throw ApiException.badRequest("MAKER_MISMATCH",
+                        "makerAddress must be the deposit wallet " + depositWallet + " for signatureType=POLY_1271");
+            }
+            return depositWallet;
         }
         if (req.makerAddress() == null || req.makerAddress().isBlank()) {
             throw ApiException.badRequest("MAKER_REQUIRED",
@@ -165,18 +188,29 @@ public class TradingService {
                 .orElseThrow(() -> ApiException.unauthorized("USER_GONE", "User not found"));
         ClobCredentials creds = credentialsStore.get(userId);
 
+        String signature;
+        try {
+            signature = builder.finalizeSignature(built, req.signature());
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_SIGNATURE", e.getMessage());
+        }
+
         OrderAudit audit = new OrderAudit();
         audit.setUserId(userId);
         audit.setOrderHash(req.orderHash());
-        audit.setConditionId(((java.util.Map<?, ?>) built.typedData().get("message")).get("tokenId").toString());
-        audit.setSide(((java.util.Map<?, ?>) built.typedData().get("message")).get("side").toString());
+        // wireOrder, not typedData.message: for POLY_1271 the signed message is the ERC-7739 wrapper.
+        java.util.Map<?, ?> order = built.wireOrder() != null
+                ? built.wireOrder()
+                : (java.util.Map<?, ?>) built.typedData().get("message");
+        audit.setConditionId(order.get("tokenId").toString());
+        audit.setSide(order.get("side").toString());
         audit.setMakerAmount(built.makerAmount());
         audit.setTakerAmount(built.takerAmount());
         audit.setStatus("SUBMITTING");
         audit.setIdempotencyKey(req.idempotencyKey());
         auditRepo.save(audit);
 
-        return clob.submit(built, req.signature(), user.getWalletAddress(), creds)
+        return clob.submit(built, signature, user.getWalletAddress(), creds)
                 .doOnSuccess(resp -> {
                     audit.setStatus(resp.status());
                     auditRepo.save(audit);

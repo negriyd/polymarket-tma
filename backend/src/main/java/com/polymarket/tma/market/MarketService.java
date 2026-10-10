@@ -1,5 +1,6 @@
 package com.polymarket.tma.market;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.market.client.ClobClient;
@@ -9,6 +10,7 @@ import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.dto.MarketListResponse;
 import com.polymarket.tma.market.dto.OrderbookDto;
 import com.polymarket.tma.market.dto.PriceHistoryDto;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -24,12 +26,18 @@ public class MarketService {
     private final ClobClient clob;
     private final MarketCacheService cache;
     private final AppProperties props;
+    private final ObjectMapper objectMapper;
 
-    public MarketService(GammaClient gamma, ClobClient clob, MarketCacheService cache, AppProperties props) {
+    public MarketService(GammaClient gamma,
+                         ClobClient clob,
+                         MarketCacheService cache,
+                         AppProperties props,
+                         ObjectMapper objectMapper) {
         this.gamma = gamma;
         this.clob = clob;
         this.cache = cache;
         this.props = props;
+        this.objectMapper = objectMapper;
     }
 
     public Mono<MarketListResponse> list(int page, int size, String order, boolean ascending, String tag, String search) {
@@ -42,12 +50,29 @@ public class MarketService {
 
         return cache.readThrough(key, List.class, props.polymarket().listCacheTtl(), loader.cast(List.class))
                 .map(raw -> {
-                    @SuppressWarnings("unchecked")
-                    List<MarketDto> markets = (List<MarketDto>) raw;
+                    List<MarketDto> markets = toMarketDtoList(raw);
                     boolean hasMore = markets.size() > safeSize;
-                    List<MarketDto> items = hasMore ? markets.subList(0, safeSize) : markets;
+                    List<MarketDto> items = hasMore
+                            ? new ArrayList<>(markets.subList(0, safeSize))
+                            : new ArrayList<>(markets);
                     return new MarketListResponse(items, safePage, safeSize, hasMore);
                 });
+    }
+
+    /** Redis JSON cache deserializes records as {@link java.util.LinkedHashMap}; normalize before HTTP JSON. */
+    private List<MarketDto> toMarketDtoList(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<MarketDto> out = new ArrayList<>(list.size());
+        for (Object item : list) {
+            if (item instanceof MarketDto dto) {
+                out.add(dto);
+            } else {
+                out.add(objectMapper.convertValue(item, MarketDto.class));
+            }
+        }
+        return out;
     }
 
     public Mono<MarketDto> get(String marketKey) {
@@ -56,7 +81,15 @@ public class MarketService {
                 ? resolveGammaByConditionId(marketKey)
                 : gamma.getMarket(marketKey);
         return cache.readThrough(key, MarketDto.class, props.polymarket().detailCacheTtl(), loader)
+                .map(this::toMarketDto)
                 .switchIfEmpty(Mono.error(ApiException.notFound("MARKET_NOT_FOUND", "Market not found: " + marketKey)));
+    }
+
+    private MarketDto toMarketDto(Object raw) {
+        if (raw instanceof MarketDto dto) {
+            return dto;
+        }
+        return objectMapper.convertValue(raw, MarketDto.class);
     }
 
     private Mono<MarketDto> resolveGammaByConditionId(String conditionId) {

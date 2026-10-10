@@ -2,6 +2,7 @@ package com.polymarket.tma.redeem;
 
 import com.polymarket.tma.auth.jwt.AuthPrincipal;
 import com.polymarket.tma.common.ApiException;
+import com.polymarket.tma.trading.relayer.DepositWalletDtos;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * The frontend takes {@code tx} and broadcasts it via Privy. After confirmation the user's USDC
  * balance reflects the payout for the winning outcome (zero if the index set lost).
+ *
+ * <pre>
+ *   POST /api/positions/redeem/prepare-batch {conditionId, negRisk}
+ *   -> deposit-wallet Batch to sign; submit via /api/wallet/deposit-wallet/batches/submit
+ * </pre>
+ * The batch variant is the one for CLOB v2 positions (held by the deposit wallet, paid in pUSD).
  */
 @RestController
 @RequestMapping("/api/positions/redeem")
@@ -37,5 +44,14 @@ public class RedeemController {
             throw ApiException.unauthorized("UNAUTHENTICATED", "Authentication required");
         }
         return service.prepare(principal.userId(), req);
+    }
+
+    @PostMapping("/prepare-batch")
+    public DepositWalletDtos.PreparedBatch prepareBatch(@AuthenticationPrincipal AuthPrincipal principal,
+                                                        @Valid @RequestBody RedeemDtos.BatchRequest req) {
+        if (principal == null) {
+            throw ApiException.unauthorized("UNAUTHENTICATED", "Authentication required");
+        }
+        return service.prepareBatch(principal.userId(), req);
     }
 }

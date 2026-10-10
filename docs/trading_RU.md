@@ -1,6 +1,105 @@
 # Phase 2 — Статус торговли
 
-Сделки на Polymarket рассчитываются через **CTF Exchange (Polygon)**. Бэкенд никогда не держит приватные ключи пользователей: браузер (**Privy**-кошелёк) подписывает **EIP-712** typed data, бэкенд шлёт подписанный ордер в **CLOB**. После итерации мая 2026 сквозной цикл **депозит → ставка → редим** собран целиком, плюс есть конфигурируемая платформенная комиссия (spread) на каждый подготавливаемый ордер.
+> **Стратегия (24 мая 2026):** основной путь для новых пользователей — **внутренние ставки (parimutuel)**, MVP (Фазы 0–3) **готов**.  
+> Пошаговое включение: **[bets-setup_RU.md](./bets-setup_RU.md)**. План: [internal-bets-plan_RU.md](./internal-bets-plan_RU.md).  
+> **Обновление (11 октября 2026): CLOB-торговля снова работает.** Блокер «maker address not allowed, please use the deposit wallet flow» снят: торговля идёт через **deposit wallet** пользователя и подписи `POLY_1271`. Проверено реальным ордером (`status: live`, затем отмена) — см. раздел «CLOB v2 через deposit wallet» ниже и `tools/clob-v2-probe/`.
+> Режим выбирается флагом: `BETS_ENABLED=true` — внутренние ставки (`/api/bets/*`), `BETS_ENABLED=false` — торговля на Polymarket CLOB (`/api/orders/*`).
+
+## Внутренние ставки (`BETS_ENABLED=true`, Фазы 1–3 ✅)
+
+| Компонент | Статус | Где |
+|-----------|--------|-----|
+| Backend `/api/bets/*` | ✅ | `backend/.../bets/` |
+| DB V2 + V3 | ✅ | `V2__internal_bets.sql`, `V3__withdrawals.sql` |
+| Auto-resolve + payouts | ✅ | `MarketResolutionJob`, `PayoutCalculator` |
+| Withdraw + admin | ✅ | `WithdrawService`, `BetAdminController` |
+| Frontend bet flow | ✅ | `MarketTradeSheet.tsx`, `MarketDetailPage.tsx` |
+| Wallet: баланс, My bets, withdraw | ✅ | `_WalletPanel.tsx` |
+
+**Сквозной поток (пользователь):** Markets → Bet YES/NO → USDC на treasury → confirm → (после resolve) balance → Withdraw.  
+**Оператор:** env в `deploy/.env` → см. [bets-setup_RU.md](./bets-setup_RU.md).
+
+---
+
+## CLOB v2 через deposit wallet — ✅ работает
+
+С апреля–мая 2026 Polymarket не принимает ордера, где `maker` — обычный EOA. Каждый пользователь торгует через **deposit wallet** — смарт-кошелёк, владелец которого его Privy EOA. Адрес детерминирован (CREATE2), кошелёк разворачивается и обслуживается без газа через **Polymarket Relayer**, пополняется через **Polymarket Bridge**.
+
+**Проверка 11.10.2026** (тестовый кошелёк `0x415a…` → deposit wallet `0xa1D1…bE57`): развёртывание через relayer, пополнение USDT (Solana) → 4.59 pUSD, разрешения, API-ключ, ордер `POLY_1271` принят CLOB (`status: live`) и отменён. Эталон этого ордера зашит в `OrderBuilderTest`.
+
+### Рабочая схема
+
+| Что | Значение |
+|---|---|
+| API-ключ (L1) | подпись EOA, `POLY_ADDRESS` = EOA (без изменений) |
+| Ордер | `signatureType=3` (`POLY_1271`), `maker` = `signer` = deposit wallet |
+| Подпись | EOA подписывает ERC-7739 `TypedDataSign` (ордер внутри как `contents`); бэкенд собирает итоговую подпись 317 байт |
+| Залог | **pUSD** `0xC011a7E1…` (обёрнутый USDC), не USDC.e |
+| Разрешения | 10 штук одним пакетом: pUSD → 2 exchange v2, NegRiskAdapter, exchange v3; CTF → 2 exchange v2, NegRiskAdapter, 2 CTF collateral adapter; PositionManager → exchange v3 |
+| Развёртывание / разрешения / комиссия / Claim / вывод | пакеты (`Batch`, EIP-712), которые подписывает EOA и исполняет relayer — газ пользователю не нужен |
+| Пополнение | `POST bridge.polymarket.com/deposit` → адреса в EVM / Solana / Tron; любой поддерживаемый стейблкоин приходит как pUSD |
+
+### Компоненты
+
+| Компонент | Где |
+|---|---|
+| Подпись POLY_1271 (обёртка ERC-7739, `finalizeSignature`) | `trading/OrderBuilder.java` |
+| Relayer-клиент: адрес кошелька, `WALLET-CREATE`, `WALLET`-пакеты, builder HMAC | `trading/relayer/RelayerClient.java`, `DepositWalletAddress`, `DepositWalletBatch`, `BuilderAuthSigner` |
+| Онбординг, разрешения, общий механизм пакетов | `trading/relayer/DepositWalletService.java`, `DepositWalletApprovals`, `PendingBatchCache` |
+| Пополнение и вывод через мост | `trading/bridge/BridgeClient.java`, `FundingService`, `WithdrawService` |
+| Claim (pUSD через CTF collateral adapter) | `redeem/RedeemService.prepareBatch` |
+| Фронтенд: кошелёк, Top up, Withdraw | `features/wallet/DepositWalletSection.tsx`, `FundingPanel.tsx`, `WithdrawPanel.tsx`, `relayerTx.ts` |
+| Фронтенд: сделка, Claim | `features/trading/ClobTradeSheet.tsx`, `PositionRow.tsx` |
+| Проверочный скрипт на официальных TS SDK | `tools/clob-v2-probe/` |
+
+### Эндпоинты (все требуют авторизации)
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/api/wallet/deposit-wallet` | адрес, развёрнут ли, баланс pUSD, 10 разрешений, `readyToTrade` |
+| POST | `/api/wallet/deposit-wallet/deploy` | `WALLET-CREATE` через relayer |
+| POST | `/api/wallet/deposit-wallet/approvals/prepare` | пакет с недостающими разрешениями |
+| POST | `/api/wallet/deposit-wallet/batches/submit` | `{batchHash, signature}` → relayer (разрешения, комиссия, Claim, вывод) |
+| GET | `/api/wallet/deposit-wallet/transactions/{id}` | статус транзакции relayer |
+| GET | `/api/wallet/deposit-wallet/funding` | адреса моста и варианты пополнения |
+| GET | `/api/wallet/deposit-wallet/funding/deposits` | последние пополнения через мост |
+| GET | `/api/wallet/deposit-wallet/withdraw/options` | направления вывода и баланс |
+| POST | `/api/wallet/deposit-wallet/withdraw/prepare` | пакет вывода (pUSD напрямую или через мост) + расчёт моста |
+| POST | `/api/positions/redeem/prepare-batch` | пакет Claim |
+
+Вызовы в пакетах собирает **только сервер** (хранятся в Redis 10 минут); клиент присылает лишь хеш и подпись, а сервер сверяет подписанта с кошельком пользователя. Так builder-ключи нельзя использовать для произвольных транзакций.
+
+### Настройка (оператор)
+
+| Env | Назначение |
+|---|---|
+| `POLY_BUILDER_API_KEY`, `POLY_BUILDER_SECRET`, `POLY_BUILDER_PASSPHRASE` | builder-ключ: polymarket.com → Settings → Builders. Без него не работают развёртывание, разрешения, комиссия, Claim и вывод |
+| `POLY_BUILDER_CODE` | необязательный bytes32 builder code для атрибуции переводов моста |
+| `RELAYER_URL`, `BRIDGE_URL` | по умолчанию `relayer-v2.polymarket.com`, `bridge.polymarket.com` |
+| `BETS_ENABLED=false` | показывать CLOB-торговлю вместо внутренних ставок |
+
+Адреса контрактов — `app.relayer.*` в `application.yml`.
+
+### Путь пользователя
+
+1. **Wallet → Connect Polymarket trading** — подпись L1, API-ключ.
+2. **Trading wallet → Activate** — развёртывание deposit wallet.
+3. **Approve** — одна подпись на все недостающие разрешения.
+4. **Top up** — выбрать сеть и токен, отправить на адрес моста; через несколько минут приходит pUSD.
+5. **Сделка** на странице рынка: подпись ордера; при включённой комиссии — вторая подпись (перевод pUSD).
+6. **Claim** по решённой позиции — подпись пакета, выплата в pUSD.
+7. **Withdraw** — pUSD в Polygon или стейблкоин в другую сеть через мост (перед подписью показывается расчёт).
+
+### Ограничения
+
+- Поддержаны **CTF-рынки** (`clobTokenIds`, ордера версии 2). Позиции Polymarket V2 (Router `0x1212…`, ордера версии 3 с `positionID`) не обрабатываются.
+- Мост на маленьких суммах дорогой: вывод $3 → USDT (Tron) по расчёту даёт ≈ 1.60 USDT. Интерфейс показывает расчёт и предупреждение перед подписью.
+- Пакеты используют nonce relayer на момент подготовки: из двух одновременно подготовленных пакетов исполнится один.
+- Статус вывода через мост не отслеживается — показывается только отправка pUSD и ориентировочное время.
+
+---
+
+## CLOB: детали реализации
 
 ## Phase 1 vs Phase 2 (что в репозитории)
 
@@ -29,7 +128,7 @@
 - [PositionsClient.java](../backend/src/main/java/com/polymarket/tma/trading/PositionsClient.java)
 - [RedeemCalldataBuilder.java](../backend/src/main/java/com/polymarket/tma/redeem/RedeemCalldataBuilder.java) · [RedeemService.java](../backend/src/main/java/com/polymarket/tma/redeem/RedeemService.java) · [RedeemController.java](../backend/src/main/java/com/polymarket/tma/redeem/RedeemController.java)
 - [FeeCalldataBuilder.java](../backend/src/main/java/com/polymarket/tma/fees/FeeCalldataBuilder.java) · [FeeService.java](../backend/src/main/java/com/polymarket/tma/fees/FeeService.java) · [FeeController.java](../backend/src/main/java/com/polymarket/tma/fees/FeeController.java)
-- [MarketTradeSheet.tsx](../frontend/src/features/trading/MarketTradeSheet.tsx) — prepare → Privy `signTypedData` → опциональный feeTx → submit
+- [MarketTradeSheet.tsx](../frontend/src/features/trading/MarketTradeSheet.tsx) — **internal bets:** prepare → USDC transfer → confirm (при `BETS_ENABLED=true`)
 - [PositionRow.tsx](../frontend/src/features/trading/PositionRow.tsx) — встроенная кнопка Claim на каждой redeemable-позиции
 - [useWallet.ts](../frontend/src/features/wallet/useWallet.ts) — кошельки Privy + USDC на Polygon
 
@@ -44,22 +143,26 @@ sequenceDiagram
     participant POL as Polygon
     participant C as Polymarket CLOB
 
-    U->>B: POST /api/orders/prepare {conditionId, side, price, size}
-    B-->>U: typedData + orderHash + (опционально) feeTx
+    participant R as Polymarket Relayer
+
+    U->>B: POST /api/orders/prepare {conditionId, side, price, size, signatureType: POLY_1271}
+    B->>B: maker = signer = deposit wallet (CREATE2 из EOA)
+    B-->>U: typedData (ERC-7739 TypedDataSign) + orderHash + (опционально) feeBatch
     U->>P: signTypedData(typedData)
-    P-->>U: signature
-    opt feeTx есть
-        U->>P: sendTransaction(feeTx)  // USDC-перевод на fee-кошелёк
-        P->>POL: USDC.transfer(recipient, feeAmount)
-    end
+    P-->>U: 65-байтная подпись
     U->>B: POST /api/orders/submit {orderHash, signature, idempotencyKey}
-    B->>B: достать prepared-ордер из Redis
+    B->>B: достать ордер из Redis, finalizeSignature → 317 байт
     B->>C: POST /order с L2 + подписанный ордер
     C-->>B: {orderID, status}
     B-->>U: SubmittedOrderResponse
+    opt feeBatch есть (после успешного ордера)
+        U->>P: signTypedData(feeBatch.typedData)
+        U->>B: POST /api/wallet/deposit-wallet/batches/submit
+        B->>R: WALLET-пакет: pUSD.transfer(recipient, fee)
+    end
 ```
 
-## Сквозной поток redeem (новый)
+## Сквозной поток Claim (deposit wallet)
 
 ```mermaid
 sequenceDiagram
@@ -67,14 +170,15 @@ sequenceDiagram
     participant U as TMA UI
     participant P as Privy кошелёк
     participant B as Бэкенд
-    participant POL as Polygon (CTF)
+    participant R as Polymarket Relayer
 
-    U->>B: POST /api/positions/redeem/prepare {conditionId, outcomeIndex}
-    B-->>U: tx { to: CTF, data: redeemPositions(...), value: 0 }
-    U->>P: sendTransaction(tx)
-    P->>POL: redeemPositions(USDC, 0x0, conditionId, [1<<idx])
-    POL-->>U: USDC payout (только для выигравших index sets)
-    U->>B: refetch /api/positions  // строка пропадает, как только баланс отражает выплату
+    U->>B: POST /api/positions/redeem/prepare-batch {conditionId, negRisk}
+    B-->>U: Batch: CtfCollateralAdapter.redeemPositions(pUSD, 0x0, conditionId, [1, 2])
+    U->>P: signTypedData(batch.typedData)
+    U->>B: POST /api/wallet/deposit-wallet/batches/submit {batchHash, signature}
+    B->>R: WALLET-пакет от deposit wallet
+    R-->>U: транзакция в блоке → pUSD на deposit wallet
+    U->>B: refetch /api/positions и /api/wallet/deposit-wallet
 ```
 
 ---
@@ -97,7 +201,7 @@ Privy показывает обобщённое **«An error has occurred, pleas
 
 ### 3. **`signatureType` vs модель кошелька**
 
-По умолчанию **EOA** (`signatureType = 0`). Polymarket часто работает через proxy/Safe; embedded smart-аккаунты могут требовать **POLY_PROXY / POLY_GNOSIS_SAFE** в соответствии с docs.
+Для новых кошельков CLOB принимает только **`POLY_1271`** (deposit wallet); `ClobTradeSheet` всегда шлёт его. EOA (`0`) отклоняется с `CLOB_DEPOSIT_WALLET_REQUIRED`.
 
 ### 4. **`orderHash` vs учёт в CLOB**
 
@@ -125,7 +229,9 @@ Privy показывает обобщённое **«An error has occurred, pleas
    - `POST /api/clob/auth/submit { signature, timestamp, nonce }`
 2. При отказе CLOB с 401/403 — фронт сбрасывает creds (`DELETE /api/clob/auth`) и предлагает заново вывести ключ.
 
-## Approvals (USDC + Conditional Tokens)
+## Approvals (USDC + Conditional Tokens) — legacy EOA
+
+> Этот раздел описывает старый EOA-путь (USDC.e, транзакции с газом от пользователя). Для deposit wallet используются `DepositWalletApprovals` (10 разрешений, pUSD) и `/api/wallet/deposit-wallet/approvals/prepare`; `ApprovalsSection.tsx` больше не показывается.
 
 В `backend/src/main/java/com/polymarket/tma/wallet`:
 
@@ -145,31 +251,9 @@ Polygon-адреса (в `application.yml`):
 
 > **Важно (миграция CLOB v2, 2026-04-22).** Polymarket мигрировали свою CTF Exchange на v2 22 апреля 2026. Старый v1 (`0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E`) с 30 апреля 2026 отдаёт `400 "order_version_mismatch"` на любые новые ордера. Старые approve USDC / CTF на v1 теперь бесполезны — пользователь должен заново выдать аппрув на v2-контракт при первой сделке. Эталонный код — [py-clob-client-v2](https://github.com/Polymarket/py-clob-client-v2); в наших исходниках актуальная схема живёт в `OrderBuilder`.
 
-### Открытый внешний блокер — deposit-wallet flow (`CLOB_DEPOSIT_WALLET_REQUIRED`)
+### Deposit-wallet flow — решено (октябрь 2026)
 
-Даже с корректной v2-схемой EIP-712 Polymarket CLOB отбивает ордер, в котором `maker`/`signer` — это сырой EOA:
-
-```
-400 {"error":"maker address not allowed, please use the deposit wallet flow"}
-```
-
-Миграция 22 апреля 2026 фактически закрыла прямую торговлю с EOA. Теперь каждому кошельку нужен **deposit wallet** на стороне Polymarket: CREATE2-прокси, выводимый из EOA. Средства держит этот прокси, ордера подписываются с `signatureType=3` (POLY_1271, обёртка ERC-7739). Прокси *counterfactual*, пока пользователь не сделает хотя бы одну сделку через `polymarket.com` — после этого контракт деплоится и можно торговать через API.
-
-На середину мая 2026 апстрим всё ещё сломан end-to-end:
-
-- [py-clob-client-v2 #51](https://github.com/Polymarket/py-clob-client-v2/issues/51) — исходный отчёт «EOA-ордера отбиваются», открыт.
-- [py-clob-client-v2 #53](https://github.com/Polymarket/py-clob-client-v2/issues/53) — подтверждает, что cutover 22 апреля убил EOA-режим.
-- [py-clob-client-v2 #61](https://github.com/Polymarket/py-clob-client-v2/issues/61) — даже с `signatureType=2` и задеплоенным прокси новые аккаунты получают ту же 400.
-- [py-clob-client-v2 #63](https://github.com/Polymarket/py-clob-client-v2/issues/63) — POLY_1271 (`signatureType=3`) отбивается, потому что L1 API key привязан к EOA, а signer ордера — прокси. Поддержка Polymarket подтвердила «это не ожидаемо», но фикса нет.
-- [py-clob-client-v2 #64](https://github.com/Polymarket/py-clob-client-v2/issues/64) — диагностика «прокси ещё не задеплоен» и заметка, что Privy / соц-логин кошельки идут специальным TSS-путём.
-
-**Что у нас сейчас работает:** `ClobOrderClient.mapClobError` транслирует 400 в структурированный код `CLOB_DEPOSIT_WALLET_REQUIRED`; в `MarketTradeSheet` тост показывает понятный текст «открой polymarket.com этим кошельком, внеси USDC, сделай маленькую сделку» вместо сырого тела ответа. Дальше — ждём, пока апстрим починит свою сторону.
-
-**Что надо будет добавить, когда апстрим починят:**
-
-1. Резолвить deposit-wallet-адрес пользователя из EOA — либо через HTML профиля Polymarket (поле `proxyAddress`), либо детерминированной CREATE2-деривацией, когда Polymarket опубликует правила (см. #61).
-2. Переключить `OrderBuilder` на `signatureType=3`, `maker = proxy`, `signer = EOA`, и научить его собирать ERC-7739-обёрнутую POLY_1271 подпись (Privy `signTypedData` отдаёт внутренний EIP-712, обёртка — пост-обработка).
-3. Сбрасывать L1/L2 credentials при смене maker; инвалидация кеша уже обрабатывается ре-деривацией на странице кошелька.
+С мая 2026 CLOB отвечает на ордер с EOA-`maker` `400 "maker address not allowed, please use the deposit wallet flow"` (бэкенд маппит это в `CLOB_DEPOSIT_WALLET_REQUIRED`). Issues в py-clob-client-v2 (#51, #53, #61, #63, #64, #111, #116) описывали в основном недоработки Python-SDK. Рабочая конфигурация подтверждена сообществом в [#70](https://github.com/Polymarket/py-clob-client-v2/issues/70) и нашей проверкой 11.10.2026: API-ключ на EOA, ордер `signatureType=3` с `maker = signer = deposit wallet`. Онбординг через polymarket.com не нужен — кошелёк разворачивается через relayer. Подробности — в разделе «CLOB v2 через deposit wallet» в начале документа.
 
 Фронтенд (`ApprovalsSection.tsx`): дёргает `GET /api/wallet/approvals`, шлёт каждый `missing[i]` обычной Polygon-транзой через Privy (`{to, data, value:'0x0', chainId:137}`), затем перезапрашивает статус.
 
@@ -181,7 +265,7 @@ Polygon-адреса (в `application.yml`):
 - `RedeemService` — по `(conditionId, outcomeIndex)` + кошельку вызывающего возвращает `UnsignedTx` на `app.polygon.ctf-address`.
 - `RedeemController` — `POST /api/positions/redeem/prepare` (требует auth).
 
-Фронтенд (`PositionRow.tsx`): кнопка Claim показывается, когда `position.redeemable === true`; на клик → `prepareRedeem` → Privy `useSendTransaction` → invalidate React-Query кэша `['positions']`. CTF делает revert безопасно, если рынок ещё не разрешён ончейн.
+Фронтенд (`PositionRow.tsx`): кнопка Claim показывается, когда `position.redeemable === true`. Для позиций на deposit wallet используется `RedeemService.prepareBatch` (`POST /api/positions/redeem/prepare-batch`): пакет вызывает `redeemPositions(pUSD, 0x0, conditionId, [1, 2])` на **CtfCollateralAdapter** `0xAdA1…cE1f` или **NegRiskCtfCollateralAdapter** `0xadA2…eAab` (по `negativeRisk` позиции), выплата сразу в pUSD. Старый `POST /api/positions/redeem/prepare` (транзакция с EOA на CTF, выплата в USDC.e) остался для legacy и фронтендом больше не вызывается.
 
 ## maker / signer для каждого `signatureType`
 
@@ -192,8 +276,9 @@ Polygon-адреса (в `application.yml`):
 | `EOA` (по умолчанию) | wallet | wallet |
 | `POLY_PROXY` | обязательный `makerAddress` (proxy) | wallet |
 | `POLY_GNOSIS_SAFE` | обязательный `makerAddress` (Safe) | wallet |
+| `POLY_1271` (deposit wallet) | deposit wallet, вычисляется из wallet; `makerAddress` необязателен, но должен совпадать (`MAKER_MISMATCH`) | deposit wallet (EOA подписывает обёртку ERC-7739) |
 
-Для не-EOA запрос падает с `MAKER_REQUIRED`, если `makerAddress` пуст, или `MAKER_EQUALS_SIGNER`, если совпадает с кошельком. `OrderBuilder.build(maker, signer, req)` пишет два разных поля в EIP-712 message.
+Для `POLY_PROXY` / `POLY_GNOSIS_SAFE` запрос падает с `MAKER_REQUIRED`, если `makerAddress` пуст, или `MAKER_EQUALS_SIGNER`, если совпадает с кошельком. `OrderBuilder.build(maker, signer, req)` пишет два разных поля в EIP-712 message.
 
 ---
 
@@ -204,17 +289,17 @@ Polygon-адреса (в `application.yml`):
 | Поле | EIP-712 тип | JSON на проводе | Заметка |
 |------|-------------|------------------|---------|
 | `salt` | `uint256` | **JSON number** | Генерируется < 2^53, чтобы не терять точность при float64-парсинге на сервере |
-| `maker` | `address` | строка | EOA-кошелёк или proxy/Safe, держащий средства |
-| `signer` | `address` | строка | Всегда тот кошелёк, который подписывает |
+| `maker` | `address` | строка | Кто держит средства: deposit wallet (POLY_1271), EOA, proxy или Safe |
+| `signer` | `address` | строка | Кто подписывает; для POLY_1271 — сам deposit wallet (проверка через ERC-1271) |
 | `tokenId` | `uint256` | строка | Decimal big-int — 256 бит, JSON number терял бы точность |
 | `makerAmount` / `takerAmount` | `uint256` | строка | 6-знаковая шкала USDC / share-юнитов |
 | `side` | `uint8` (0/1) | строка `"BUY"`/`"SELL"` | На проводе строка, в digest — uint8; CLOB восстанавливает значение на своей стороне |
-| `signatureType` | `uint8` | **JSON number** | 0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE |
+| `signatureType` | `uint8` | **JSON number** | 0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE, 3=POLY_1271 |
 | `timestamp` | `uint256` | строка ms | Новое в v2; заменяет v1-ный `nonce` для уникальности |
 | `metadata` | `bytes32` | hex-строка | Новое в v2; по умолчанию `0x00…00` |
 | `builder` | `bytes32` | hex-строка | Новое в v2; по умолчанию `0x00…00` (атрибуция билдера) |
 | `expiration` | — *(только API)* | строка секунд | В v2 живёт только на проводе, в digest НЕ участвует. По умолчанию `"0"` (без срока) |
-| `signature` | — | строка | Подпись кошелька лежит **внутри** объекта `order` |
+| `signature` | — | строка | Лежит **внутри** объекта `order`. Для POLY_1271 — 317 байт: `подпись EOA ‖ app domain separator ‖ hash(order) ‖ строка типа Order ‖ uint16 длины` |
 
 Верхний уровень:
 
@@ -263,6 +348,10 @@ Polygon-адреса (в `application.yml`):
    - сабмитит `{orderHash, signature}` в `POST /api/orders/submit`.
 4. `GET /api/fees` отдаёт публичный конфиг комиссии, чтобы карточка ставки показывала превью (`Platform fee 0.50% · ≈ $0.025 USDC`) до подписания.
 
+### Комиссия для deposit wallet (POLY_1271)
+
+Для ордеров `POLY_1271` ответ `prepare` вместо `feeTx` содержит **`feeBatch`** — пакет `pUSD.transfer(recipient, fee)` с deposit wallet. `ClobTradeSheet` подписывает его **после** успешной отправки ордера и отдаёт в `batches/submit`; газ платит relayer. Итог для пользователя — две подписи на сделку. Если комиссия не прошла, ордер остаётся, пользователь видит предупреждение.
+
 ### Почему отдельный transfer (а не `feeRateBps` в CLOB)
 
 Поле `feeRateBps` в EIP-712 ордере Polymarket уходит **оператору CLOB**, а не сторонней платформе, поэтому через него нельзя пустить долю проекта. Самый чистый MVP — отдельный USDC-перевод сразу после подписи: одна дополнительная Polygon-транза, газ платит пользователь, кошелёк-получатель видит чистый `transfer(...)` на каждую ставку.
@@ -270,7 +359,7 @@ Polygon-адреса (в `application.yml`):
 ### Ограничения / следующие шаги
 
 - Комиссия снимается на **submit**, а не на fill. Если ордер не сматчится — комиссия всё равно собрана; такая модель «плата за размещение ставки» сознательно. Для модели «только при fill» нужен кастомный смарт-контракт-эскроу.
-- Газ для комиссии оплачивается в MATIC. Дальше — спонсировать газ через paymaster (Privy session signers это умеют).
+- Для EOA-ордеров газ комиссии оплачивается в POL; для deposit wallet газ не нужен (relayer).
 - В `order_audit` пока нет колонок `fee_amount` / `fee_tx_hash`. Их добавление — в production-чеклисте ниже.
 
 ## Геоблок — региональные ограничения Polymarket CLOB
@@ -316,8 +405,9 @@ CLOB сидит за Cloudflare и отклоняет `POST /order` (и ряд �
    - polling `/api/positions` на каждого активного пользователя раз в N минут,
    - кросс-чек `redeemable=true` → отправка сообщения через уже сконфигурированный `app.telegram.bot-token`,
    - дедуп по `(user, conditionId)`, чтобы одну выплату не объявлять дважды.
-3. **Авторефреш approvals** — после подтверждения tx перечитывать состояние; пробрасывать tx hash в UI (наполовину сделано в `ApprovalsSection`).
-4. **UI «My orders»** — открытых CLOB-ордеров пока нет в интерфейсе, поэтому уже подключённый `DELETE /api/orders/{id}` ждёт экрана списка.
+3. **Живая проверка всей цепочки в TMA** на deposit wallet (активация → разрешения → пополнение → ордер → комиссия → Claim → вывод) с боевыми builder-ключами.
+4. **Отслеживание вывода через мост** по `/status/{адрес}`; удалить legacy (`ApprovalsSection.tsx`, `/api/wallet/approvals`, `/redeem/prepare`).
+5. **UI «My orders»** — открытых CLOB-ордеров пока нет в интерфейсе, поэтому уже подключённый `DELETE /api/orders/{id}` ждёт экрана списка.
 
 ---
 

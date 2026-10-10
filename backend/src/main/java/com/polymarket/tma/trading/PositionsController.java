@@ -5,6 +5,7 @@ import com.polymarket.tma.auth.jwt.AuthPrincipal;
 import com.polymarket.tma.auth.repo.AppUserRepository;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.market.repo.FavoriteMarketRepository;
+import com.polymarket.tma.trading.relayer.RelayerClient;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -21,13 +22,16 @@ public class PositionsController {
     private final PositionsClient positions;
     private final AppUserRepository userRepo;
     private final FavoriteMarketRepository favorites;
+    private final RelayerClient relayer;
 
     public PositionsController(PositionsClient positions,
                                AppUserRepository userRepo,
-                               FavoriteMarketRepository favorites) {
+                               FavoriteMarketRepository favorites,
+                               RelayerClient relayer) {
         this.positions = positions;
         this.userRepo = userRepo;
         this.favorites = favorites;
+        this.relayer = relayer;
     }
 
     /**
@@ -35,6 +39,8 @@ public class PositionsController {
      * the local {@code favorite_market} table. Tagging is best-effort: a database read happens once per
      * request before the upstream Mono runs, so the join is consistent with the favorites the user can
      * see in the UI without an extra round-trip on the client.
+     *
+     * <p>CLOB v2 orders use {@code maker = deposit wallet}, so outcome tokens land there, not on the EOA.
      */
     @GetMapping("/positions")
     public Mono<List<PositionsClient.Position>> list(@AuthenticationPrincipal AuthPrincipal principal) {
@@ -42,7 +48,7 @@ public class PositionsController {
         Set<String> favored = favorites.findAllByUserId(u.getId()).stream()
                 .map(f -> f.getConditionId() == null ? "" : f.getConditionId().toLowerCase())
                 .collect(Collectors.toUnmodifiableSet());
-        return positions.getPositions(u.getWalletAddress())
+        return positions.getPositions(relayer.depositWalletAddress(u.getWalletAddress()))
                 .map(list -> list.stream()
                         .map(p -> p.withFavorite(p.conditionId() != null
                                 && favored.contains(p.conditionId().toLowerCase())))

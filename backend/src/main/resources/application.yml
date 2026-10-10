@@ -84,6 +84,33 @@ app:
     neg-risk-ctf-exchange-address: "0xe2222d279d744050d28e00520010520000310F59"
     # Polymarket Conditional Tokens (ERC-1155) on Polygon — unchanged in v2.
     ctf-address: "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+  relayer:
+    # Polymarket Relayer: gasless deposit-wallet deploy + batched approvals for CLOB v2 (POLY_1271).
+    base-url: ${RELAYER_URL:https://relayer-v2.polymarket.com}
+    # polymarket.com -> Settings -> Builders. Server-side only.
+    builder-api-key: ${POLY_BUILDER_API_KEY:}
+    builder-secret: ${POLY_BUILDER_SECRET:}
+    builder-passphrase: ${POLY_BUILDER_PASSPHRASE:}
+    deposit-wallet-factory: "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07"
+    # factory.beacon(); deposit wallets deployed since 2026-06-29 are beacon proxies.
+    deposit-wallet-beacon: "0x7A18EDfe055488A3128f01F563e5B479D92ffc3a"
+    # Legacy UUPS implementation (wallets deployed before the beacon switch).
+    deposit-wallet-implementation: "0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB"
+    # CLOB v2 collateral: pUSD (USDC.e / USDC wrapped via the Collateral Onramp).
+    collateral-address: "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+    # Exchange for position-backed outcomes (order version 3).
+    exchange-v3-address: "0xe3333700cA9d93003F00f0F71f8515005F6c00Aa"
+    # CLOB checks pUSD allowance + CTF operator approval for the NegRiskAdapter too.
+    neg-risk-adapter-address: "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"
+    position-manager-address: "0x006F54F7f9A22e0000CC2AB60031000000ae9fEF"
+    # Redeem targets for CTF markets (standard / neg-risk); pay out pUSD. Need CTF operator approval.
+    ctf-collateral-adapter-address: "0xAdA100Db00Ca00073811820692005400218FcE1f"
+    neg-risk-ctf-collateral-adapter-address: "0xadA2005600Dec949baf300f4C6120000bDB6eAab"
+  bridge:
+    # Polymarket Bridge: per-wallet deposit addresses on other chains, credited as pUSD on Polygon.
+    base-url: ${BRIDGE_URL:https://bridge.polymarket.com}
+    # Optional bytes32 builder code (polymarket.com -> Settings -> Builders) for transfer attribution.
+    builder-code: ${POLY_BUILDER_CODE:}
   privy:
     app-id: ${PRIVY_APP_ID:}
     app-secret: ${PRIVY_APP_SECRET:}
@@ -92,6 +119,18 @@ app:
     spread-bps: ${TRADING_FEE_BPS:0}
     # Polygon address that receives the USDC fee. Leave empty to disable.
     recipient-address: ${TRADING_FEE_RECIPIENT:}
+  bets:
+    # Internal parimutuel bets (primary trading path). Set enabled=true + treasury to activate.
+    feature-enabled: ${BETS_ENABLED:false}
+    treasury-address: ${BETS_TREASURY_ADDRESS:${TRADING_FEE_RECIPIENT:}}
+    treasury-private-key: ${BETS_TREASURY_PRIVATE_KEY:}
+    admin-secret: ${BETS_ADMIN_SECRET:}
+    platform-fee-bps: ${BETS_PLATFORM_FEE_BPS:500}
+    min-bet-usdc: ${BETS_MIN_USDC:1}
+    min-withdraw-usdc: ${BETS_MIN_WITHDRAW_USDC:1}
+    lock-before-end-minutes: ${BETS_LOCK_MINUTES:15}
+    resolution-grace-hours: ${BETS_GRACE_HOURS:24}
+    withdraw-cooldown-minutes: ${BETS_WITHDRAW_COOLDOWN_MINUTES:5}
 
 logging:
   level:

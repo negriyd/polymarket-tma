@@ -1,80 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import {
-  useSendTransaction,
-  useSignTypedData,
-  useWallets,
-  type SignTypedDataParams,
-} from '@privy-io/react-auth';
+import { useSendTransaction, useWallets } from '@privy-io/react-auth';
 import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError, Market, OrderSignatureType } from '@/lib/api/types';
+import type { ApiError, Market } from '@/lib/api/types';
 import { useWallet } from '@/features/wallet/useWallet';
 import { hapticImpact } from '@/lib/telegram/webApp';
 
 type OutcomeSide = 'yes' | 'no';
 
-function pickTokenIds(market: Market): { yesToken?: string; noToken?: string } {
-  const tokens = market.clobTokenIds ?? [];
+function outcomeIndexForSide(market: Market, side: OutcomeSide): number {
   const outcomes = market.outcomes ?? [];
-  const yesIdx = outcomes.findIndex((o) => o.toLowerCase() === 'yes');
-  const noIdx = outcomes.findIndex((o) => o.toLowerCase() === 'no');
-  return {
-    yesToken: yesIdx >= 0 ? tokens[yesIdx] : tokens[0],
-    noToken: noIdx >= 0 ? tokens[noIdx] : tokens[1],
-  };
-}
-
-function pickPrices(market: Market): { yes?: number; no?: number } {
-  const priceAt = (idx: number): number | undefined => {
-    const raw = market.outcomePrices?.[idx];
-    return raw == null ? undefined : Number(raw);
-  };
-  const yesIdx = market.outcomes?.findIndex((o) => o.toLowerCase() === 'yes') ?? -1;
-  const noIdx = market.outcomes?.findIndex((o) => o.toLowerCase() === 'no') ?? -1;
-  return {
-    yes: priceAt(yesIdx >= 0 ? yesIdx : 0),
-    no: priceAt(noIdx >= 0 ? noIdx : 1),
-  };
-}
-
-interface PrivyErrorShape {
-  code?: string;
-  type?: string;
-  cause?: unknown;
+  const idx = outcomes.findIndex((o) => o.toLowerCase() === side);
+  return idx >= 0 ? idx : side === 'yes' ? 0 : 1;
 }
 
 function formatErr(e: unknown): string {
   if (e instanceof AxiosError) {
     const d = e.response?.data as ApiError | undefined;
-    // Friendly UI text for known structural CLOB rejections so the error toast doesn't read
-    // like a 500-character upstream dump. The full body still goes to the console.
-    if (d?.code === 'CLOB_DEPOSIT_WALLET_REQUIRED') {
-      return (
-        'Polymarket requires this wallet to be onboarded on polymarket.com first. ' +
-        'Open polymarket.com with this wallet, deposit USDC, and place one small trade ' +
-        'so your deposit-wallet proxy is deployed on-chain. After that come back here.'
-      );
-    }
-    if (d?.code === 'CLOB_GEOBLOCKED') {
-      return 'Polymarket has geoblocked the server region. Backend operator action required.';
-    }
-    if (d?.code === 'CLOB_ORDER_VERSION_MISMATCH') {
-      return (
-        'Polymarket rejected the EIP-712 order shape. This is a backend bug — please ' +
-        'report it; trading is paused until it is fixed.'
-      );
-    }
     if (d?.message) return d.message;
     if (e.message) return e.message;
   }
-  if (e instanceof Error) {
-    const extra = e as Error & PrivyErrorShape;
-    const code = extra.code ?? extra.type;
-    if (code) return `${code}: ${e.message}`;
-    return e.message;
-  }
+  if (e instanceof Error) return e.message;
   return 'Something went wrong';
 }
 
@@ -83,20 +31,14 @@ interface Props {
   outcome: OutcomeSide;
   open: boolean;
   onClose: () => void;
-  /** Default EOA. Use {@code POLY_PROXY} (or {@code POLY_GNOSIS_SAFE}) when funds sit on a proxy. */
-  signatureType?: OrderSignatureType;
-  /** Required when {@link signatureType} is not EOA. The wallet signs, but maker holds the funds. */
-  makerAddress?: string;
 }
 
 /**
- * Trading sheet: prepare → Privy EIP-712 sign → submit.
- * Only mount when `VITE_PRIVY_APP_ID` is set (inside `WalletProvider`).
+ * Internal parimutuel bet sheet: prepare → USDC transfer via Privy → confirm.
  */
-export function MarketTradeSheet({ market, outcome, open, onClose, signatureType, makerAddress }: Props) {
+export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
   const qc = useQueryClient();
   const w = useWallet();
-  const { signTypedData } = useSignTypedData();
   const { sendTransaction } = useSendTransaction();
   const { wallets } = useWallets();
 
@@ -113,78 +55,64 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
     return Number(cid);
   })();
 
-  const { yesToken, noToken } = pickTokenIds(market);
-  const { yes: yesP, no: noP } = pickPrices(market);
-  const tokenId = outcome === 'yes' ? yesToken : noToken;
-  const refPrice = outcome === 'yes' ? yesP : noP;
+  const outcomeIndex = outcomeIndexForSide(market, outcome);
+  const outcomeLabel =
+    market.outcomes?.[outcomeIndex] ?? (outcome === 'yes' ? 'YES' : 'NO');
+  const cid = market.conditionId;
 
-  const [priceStr, setPriceStr] = useState('');
   const [usdcStr, setUsdcStr] = useState('5');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [feeTxHash, setFeeTxHash] = useState<string | null>(null);
+  const [paymentTxHash, setPaymentTxHash] = useState<string | null>(null);
 
-  const cid = market.conditionId;
-
-  // Static (per session) platform fee config — drives the preview line below the inputs. Disabled
-  // when the backend has no fee configured, in which case we render nothing extra.
-  const feeCfg = useQuery({
-    queryKey: ['fee-config'],
-    queryFn: api.getFeeConfig,
+  const betsCfg = useQuery({
+    queryKey: ['bets-config'],
+    queryFn: api.getBetsConfig,
     staleTime: 5 * 60_000,
+  });
+
+  const pool = useQuery({
+    queryKey: ['bet-pool', cid],
+    queryFn: () => api.getBetPool(cid),
+    enabled: open && !!cid,
+    staleTime: 15_000,
   });
 
   useEffect(() => {
     if (!open) return;
     setError(null);
     setSuccess(null);
-    setFeeTxHash(null);
-    if (refPrice != null) {
-      setPriceStr(String(Math.min(0.99, Math.max(0.01, Number(refPrice)))));
-    } else {
-      setPriceStr('0.5');
-    }
-  }, [open, outcome, refPrice, market.conditionId]);
+    setPaymentTxHash(null);
+    const min = Number(betsCfg.data?.minBetUsdc ?? 1);
+    setUsdcStr(String(Math.max(min, 5)));
+  }, [open, outcome, cid, betsCfg.data?.minBetUsdc]);
 
-  const priceNum = Number(priceStr);
   const usdcNum = Number(usdcStr);
-  const priceOk = Number.isFinite(priceNum) && priceNum > 0 && priceNum < 1;
-  const usdcOk = Number.isFinite(usdcNum) && usdcNum > 0;
-  const shares = priceOk && usdcOk ? usdcNum / priceNum : null;
+  const minBet = Number(betsCfg.data?.minBetUsdc ?? 1);
+  const usdcOk = Number.isFinite(usdcNum) && usdcNum >= minBet;
   const canSubmit =
     w.ready &&
-    !!tokenId &&
     !!cid &&
-    priceOk &&
     usdcOk &&
-    shares != null &&
-    shares > 0 &&
     w.authenticated &&
-    !!w.address;
+    !!w.address &&
+    betsCfg.data?.enabled === true;
 
-  const trade = useMutation({
+  const poolSide = pool.data?.sides.find((s) => s.outcomeIndex === outcomeIndex);
+  const impliedPct =
+    poolSide && Number(poolSide.impliedProbability) > 0
+      ? (Number(poolSide.impliedProbability) * 100).toFixed(1)
+      : null;
+
+  const placeBet = useMutation({
     mutationFn: async () => {
       setError(null);
       setSuccess(null);
-      const p = Number(priceStr);
+      if (!cid || !w.address) throw new Error('Wallet not connected');
       const u = Number(usdcStr);
-      const sh = Number.isFinite(p) && Number.isFinite(u) && p > 0 && p < 1 && u > 0 ? u / p : null;
-      if (!cid || !tokenId) throw new Error('Market is missing token id');
-      if (!w.address) throw new Error('Wallet not connected');
-      if (sh == null || sh <= 0) throw new Error('Invalid amount or price');
+      if (!Number.isFinite(u) || u < minBet) throw new Error(`Minimum bet is ${minBet} USDC`);
 
       await api.setWalletAddress(w.address);
-
-      const sizeRounded = Math.round(sh * 1_000_000) / 1_000_000;
-      const prep = await api.prepareOrder({
-        conditionId: cid,
-        tokenId,
-        side: 'BUY',
-        price: p,
-        size: sizeRounded,
-        signatureType,
-        makerAddress,
-      });
 
       if (activeWallet && 'switchChain' in activeWallet && walletChainId !== 137) {
         try {
@@ -194,75 +122,37 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
           console.warn('Privy wallet.switchChain(137) failed:', err);
         }
       }
-      let signature: string;
-      try {
-        const res = await signTypedData(prep.typedData as SignTypedDataParams, {
-          address: w.address,
-        });
-        signature = res.signature;
-      } catch (err) {
-        console.error('Privy signTypedData failed for Order:', err, prep.typedData);
-        throw err;
-      }
 
-      // Submit FIRST, then charge the platform fee. Earlier the fee tx ran before submit, but if
-      // CLOB rejected the order (e.g. geoblock 403) the user had already paid the on-chain fee
-      // for nothing. Order is now: prepare → sign (offline) → submit (HTTP) → fee tx (on-chain).
-      let submitted;
-      try {
-        submitted = await api.submitOrder({
-          orderHash: prep.orderHash,
-          signature,
-          idempotency_key: crypto.randomUUID(),
-        });
-      } catch (e) {
-        console.error('Order submit failed:', e);
-        if (
-          e instanceof AxiosError &&
-          (e.response?.status === 401 || e.response?.status === 403)
-        ) {
-          // CLOB rejected the request because L2 credentials are missing/expired (and not the
-          // server-region geoblock — the backend uses a dedicated CLOB_GEOBLOCKED code for that).
-          // Revoke locally so the wallet page prompts to re-connect Polymarket trading.
-          const data = e.response?.data as { code?: string } | undefined;
-          if (data?.code !== 'CLOB_GEOBLOCKED') {
-            try {
-              await api.clobAuthRevoke();
-            } catch {
-              /* best effort */
-            }
-          }
-        }
-        throw e;
-      }
+      const prep = await api.prepareBet({
+        conditionId: cid,
+        outcomeIndex,
+        amountUsdc: u,
+        idempotency_key: crypto.randomUUID(),
+      });
 
-      if (prep.feeTx) {
-        try {
-          const feeRes = await sendTransaction(
-            {
-              to: prep.feeTx.to,
-              data: prep.feeTx.data,
-              value: prep.feeTx.value,
-              chainId: prep.feeTx.chainId,
-            },
-            { address: w.address },
-          );
-          setFeeTxHash(feeRes.hash);
-        } catch (err) {
-          // The order is already accepted by CLOB — surface the failure but do NOT throw, so the
-          // success toast for the order still wins. Operators can reconcile uncollected fees off
-          // the order_audit row + on-chain USDC balance of the recipient wallet.
-          console.error('Trading fee transfer failed (order already submitted):', err);
-          setError(`Order placed but the platform fee tx failed: ${formatErr(err)}`);
-        }
-      }
-      return submitted;
+      const txRes = await sendTransaction(
+        {
+          to: prep.paymentTx.to,
+          data: prep.paymentTx.data,
+          value: prep.paymentTx.value,
+          chainId: prep.paymentTx.chainId,
+        },
+        { address: w.address },
+      );
+      setPaymentTxHash(txRes.hash);
+
+      const confirmed = await api.confirmBet({
+        betId: prep.betId,
+        paymentTxHash: txRes.hash,
+      });
+      return confirmed;
     },
-    onSuccess: (sub) => {
-      setSuccess(`Order ${sub.status}${sub.orderId ? ` · ${sub.orderId.slice(0, 10)}…` : ''}`);
+    onSuccess: (bet) => {
+      setSuccess(`Bet confirmed · ${bet.outcomeLabel} · $${bet.amountUsdc}`);
       hapticImpact('medium');
-      qc.invalidateQueries({ queryKey: ['positions'] });
-      qc.invalidateQueries({ queryKey: ['market', cid ?? ''] });
+      qc.invalidateQueries({ queryKey: ['bet-pool', cid] });
+      qc.invalidateQueries({ queryKey: ['my-bets'] });
+      qc.invalidateQueries({ queryKey: ['bet-balance'] });
     },
     onError: (e) => {
       setError(formatErr(e));
@@ -270,111 +160,135 @@ export function MarketTradeSheet({ market, outcome, open, onClose, signatureType
     },
   });
 
-  const displayPriceHint =
-    refPrice != null ? `Market ~${Math.round(refPrice * 100)}¢` : 'Enter limit price (0–1)';
-
   if (!open) return null;
 
+  if (betsCfg.isLoading) {
+    return (
+      <SheetShell onClose={onClose}>
+        <p className="text-sm text-tg-hint">Loading…</p>
+      </SheetShell>
+    );
+  }
+
+  if (!betsCfg.data?.enabled) {
+    return (
+      <SheetShell onClose={onClose}>
+        <p className="rounded-lg bg-tg-secondary p-3 text-sm text-tg-hint">
+          Internal betting is not enabled on this server. Operator must set{' '}
+          <code className="text-tg-text">BETS_ENABLED=true</code> and a treasury address.
+        </p>
+      </SheetShell>
+    );
+  }
+
+  return (
+    <SheetShell onClose={onClose}>
+      <h2 className="mb-3 text-lg font-semibold text-tg-text">
+        Bet {outcomeLabel} · {market.question.slice(0, 48)}
+        {market.question.length > 48 ? '…' : ''}
+      </h2>
+
+      {!w.authenticated && (
+        <p className="mb-3 rounded-lg bg-tg-secondary p-3 text-sm text-tg-hint">
+          Connect your wallet on the{' '}
+          <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
+            Wallet
+          </Link>{' '}
+          tab first.
+        </p>
+      )}
+
+      {pool.data && (
+        <div className="mb-3 rounded-xl bg-tg-secondary p-3 text-xs text-tg-hint">
+          <p className="font-semibold uppercase tracking-wide text-tg-text">Parimutuel pool</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {pool.data.sides.map((s) => (
+              <div key={s.outcomeIndex} className="rounded-lg bg-tg-bg/50 px-2 py-1.5">
+                <p className="font-medium text-tg-text">{s.outcomeLabel}</p>
+                <p className="tabular-nums">${s.totalUsdc}</p>
+                <p className="text-[10px]">
+                  {(Number(s.impliedProbability) * 100).toFixed(1)}% of pool
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px]">
+            Total pool ${pool.data.totalPoolUsdc} · platform fee{' '}
+            {(pool.data.platformFeeBps / 100).toFixed(2)}% taken at payout
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <label className="block">
+          <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">
+            Stake (USDC)
+          </span>
+          <input
+            type="number"
+            inputMode="decimal"
+            step="1"
+            min={minBet}
+            value={usdcStr}
+            onChange={(e) => setUsdcStr(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-tg-hint/20 bg-tg-secondary px-3 py-2 text-tg-text"
+          />
+          {impliedPct && (
+            <span className="mt-0.5 block text-[10px] text-tg-hint">
+              Current implied share of {outcomeLabel} side: ~{impliedPct}% of pool after your bet
+            </span>
+          )}
+          {w.usdcBalance && usdcNum > Number(w.usdcBalance.formatted) && (
+            <span className="mt-0.5 block text-[10px] text-rose-500">Exceeds wallet USDC balance</span>
+          )}
+        </label>
+
+        {walletChainId !== undefined && walletChainId !== 137 && (
+          <p className="text-xs text-amber-500">
+            Wallet is on chain {walletChainId}. We will try to switch to Polygon (137) before sending
+            USDC.
+          </p>
+        )}
+
+        {error && <p className="text-sm text-rose-500">{error}</p>}
+        {success && <p className="text-sm text-emerald-500">{success}</p>}
+        {paymentTxHash && (
+          <p className="break-all text-[10px] text-emerald-500">payment tx: {paymentTxHash}</p>
+        )}
+
+        <p className="text-[10px] leading-snug text-tg-hint">
+          Your stake is sent on-chain to the platform treasury. Winnings are credited to your internal
+          balance after market resolution and can be withdrawn to your wallet.
+        </p>
+
+        <button
+          type="button"
+          disabled={!canSubmit || placeBet.isPending}
+          onClick={() => placeBet.mutate()}
+          className="w-full rounded-xl bg-tg-button py-3 text-base font-semibold text-tg-buttonText disabled:opacity-50"
+        >
+          {placeBet.isPending ? 'Sending USDC…' : `Place bet · ${outcomeLabel}`}
+        </button>
+      </div>
+    </SheetShell>
+  );
+}
+
+function SheetShell({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-t-2xl bg-tg-bg p-4 shadow-lg ring-1 ring-tg-hint/10">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="min-w-0 flex-1 text-lg font-semibold leading-snug text-tg-text">
-            Buy {outcome.toUpperCase()} · {market.question.slice(0, 48)}
-            {market.question.length > 48 ? '…' : ''}
-          </h2>
+        <div className="mb-2 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-lg px-2 py-1 text-sm text-tg-hint hover:bg-tg-secondary"
+            className="rounded-lg px-2 py-1 text-sm text-tg-hint hover:bg-tg-secondary"
           >
             ✕
           </button>
         </div>
-
-        {!w.authenticated && (
-          <p className="mb-3 rounded-lg bg-tg-secondary p-3 text-sm text-tg-hint">
-            Connect your wallet on the{' '}
-            <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
-              Wallet
-            </Link>{' '}
-            tab first.
-          </p>
-        )}
-
-        {!tokenId && (
-          <p className="mb-3 text-sm text-rose-500">This market has no CLOB token id; trading is unavailable.</p>
-        )}
-
-        <div className="space-y-3">
-          <label className="block">
-            <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">Limit price (USDC per share)</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.001"
-              min={0.01}
-              max={0.99}
-              value={priceStr}
-              onChange={(e) => setPriceStr(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-tg-hint/20 bg-tg-secondary px-3 py-2 text-tg-text"
-            />
-            <span className="mt-0.5 block text-[10px] text-tg-hint">{displayPriceHint}</span>
-          </label>
-
-          <label className="block">
-            <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">Spend (USDC)</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="1"
-              min={1}
-              value={usdcStr}
-              onChange={(e) => setUsdcStr(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-tg-hint/20 bg-tg-secondary px-3 py-2 text-tg-text"
-            />
-            {shares != null && priceOk && (
-              <p className="mt-1 text-xs text-tg-hint">
-                ≈ {shares.toFixed(4)} shares
-                {w.usdcBalance && usdcNum > Number(w.usdcBalance.formatted) ? ' · exceeds USDC balance' : ''}
-              </p>
-            )}
-          </label>
-
-          {feeCfg.data?.enabled && priceOk && usdcOk && shares != null && (
-            <p className="rounded-lg bg-tg-secondary px-3 py-2 text-xs text-tg-hint">
-              Platform fee {(feeCfg.data.spreadBps / 100).toFixed(2)}% · ≈ $
-              {((usdcNum * feeCfg.data.spreadBps) / 10_000).toFixed(4)} USDC
-              <span className="ml-1 text-tg-hint/70">(charged on top of the order)</span>
-            </p>
-          )}
-          {walletChainId !== undefined && walletChainId !== 137 && (
-            <p className="text-xs text-amber-500">
-              Wallet is on chain {walletChainId}. Polymarket uses Polygon (137); we will try to switch
-              before signing — if signing still fails, switch the network in your wallet manually.
-            </p>
-          )}
-          {error && <p className="text-sm text-rose-500">{error}</p>}
-          {success && <p className="text-sm text-emerald-500">{success}</p>}
-          {feeTxHash && (
-            <p className="break-all text-[10px] text-emerald-500">fee tx: {feeTxHash}</p>
-          )}
-
-          <p className="text-[10px] leading-snug text-tg-hint">
-            Requires USDC on Polygon and contract approvals (see docs/trading.md). CLOB may reject orders until API
-            credentials and approvals are complete.
-          </p>
-
-          <button
-            type="button"
-            disabled={!canSubmit || trade.isPending}
-            onClick={() => trade.mutate()}
-            className="w-full rounded-xl bg-tg-button py-3 text-base font-semibold text-tg-buttonText disabled:opacity-50"
-          >
-            {trade.isPending ? 'Signing / submitting…' : 'Review & place order'}
-          </button>
-        </div>
+        {children}
       </div>
     </div>
   );

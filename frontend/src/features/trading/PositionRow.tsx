@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSendTransaction } from '@privy-io/react-auth';
+import { useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth';
 import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
 import type { ApiError, Position } from '@/lib/api/types';
 import { hapticImpact } from '@/lib/telegram/webApp';
+import { signAndRelayBatch, waitForRelayerTx } from '@/features/wallet/relayerTx';
 
 interface Props {
   p: Position;
@@ -60,9 +61,10 @@ function endHint(iso?: string | null): string | null {
  * price, current value, unrealised PnL and an inline end-date hint. When {@link Position.redeemable}
  * is true and the wallet is connected we expose a Claim button that:
  *
- *   1. Calls `POST /api/positions/redeem/prepare` to get unsigned `redeemPositions` calldata.
- *   2. Dispatches the tx via Privy `useSendTransaction` (Polygon, no value).
- *   3. Refetches positions on success — backend will drop the row once the on-chain payout lands.
+ *   1. Calls `POST /api/positions/redeem/prepare-batch`: a deposit-wallet batch that redeems via the
+ *      CTF collateral adapter and pays out pUSD (positions live in the deposit wallet).
+ *   2. Signs it with Privy and relays it gaslessly, waiting until mined.
+ *   3. Refetches positions + trading wallet balance.
  */
 export function PositionRow({ p, walletAddress }: Props) {
   const yes = p.outcome?.toLowerCase() === 'yes';
@@ -71,7 +73,7 @@ export function PositionRow({ p, walletAddress }: Props) {
   const ends = endHint(p.endDate);
 
   const qc = useQueryClient();
-  const { sendTransaction } = useSendTransaction();
+  const { signTypedData } = useSignTypedData();
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
@@ -80,25 +82,22 @@ export function PositionRow({ p, walletAddress }: Props) {
       if (!walletAddress) throw new Error('Wallet not connected');
       setError(null);
       setTxHash(null);
-      const prep = await api.prepareRedeem({
+      const batch = await api.prepareRedeemBatch({
         conditionId: p.conditionId,
-        outcomeIndex: p.outcomeIndex,
+        negRisk: p.negativeRisk,
       });
-      const res = await sendTransaction(
-        {
-          to: prep.tx.to,
-          data: prep.tx.data,
-          value: prep.tx.value,
-          chainId: prep.tx.chainId,
-        },
-        { address: walletAddress },
+      const tx = await signAndRelayBatch(batch, async (td) =>
+        (await signTypedData(td as SignTypedDataParams, { address: walletAddress })).signature,
       );
-      return res.hash;
+      if (!tx) throw new Error('Nothing to claim');
+      const mined = await waitForRelayerTx(tx);
+      return mined.transactionHash ?? tx.transactionId;
     },
     onSuccess: (hash) => {
       setTxHash(hash);
       hapticImpact('medium');
       qc.invalidateQueries({ queryKey: ['positions'] });
+      qc.invalidateQueries({ queryKey: ['deposit-wallet'] });
     },
     onError: (e) => {
       setError(formatErr(e));

@@ -57,13 +57,10 @@ public class ClobOrderClient {
      *         The deployment must run in an allowed region (US datacenters of mainstream IaaS
      *         providers work; EU regions, Canada, and Singapore are geoblocked).</li>
      *     <li><strong>{@code CLOB_DEPOSIT_WALLET_REQUIRED}</strong> — 400 "maker address not
-     *         allowed, please use the deposit wallet flow". CLOB v2 (post-2026-04-22 migration)
-     *         no longer accepts orders signed by raw EOAs: every wallet must first be onboarded
-     *         on polymarket.com (deposit + one tiny trade) so its CREATE2 deposit-wallet proxy
-     *         is deployed, and subsequent orders use {@code signatureType=3} (POLY_1271) with
-     *         {@code maker=proxy}. As of mid-May 2026 the Polymarket SDK has multiple unresolved
-     *         issues even after correct onboarding (py-clob-client-v2 #51, #53, #61, #63, #64);
-     *         our integration cannot work end-to-end until upstream stabilises.</li>
+     *         allowed, please use the deposit wallet flow". CLOB v2 rejects orders whose maker is
+     *         a raw EOA; orders must be {@code signatureType=3} (POLY_1271) from the user's
+     *         deposit wallet, which is deployed and approved via {@code /api/wallet/deposit-wallet}.
+     *         Seeing this means the order was not POLY_1271 or the wallet is not activated yet.</li>
      *     <li><strong>{@code CLOB_ORDER_VERSION_MISMATCH}</strong> — 400 "order_version_mismatch".
      *         Either {@code OrderBuilder} fell out of sync with the v2 EIP-712 schema, or the
      *         {@code verifyingContract} routing missed a NegRisk market.</li>
@@ -80,11 +77,8 @@ public class ClobOrderClient {
         }
         if (status == 400 && lower.contains("deposit wallet flow")) {
             return ApiException.upstream("CLOB_DEPOSIT_WALLET_REQUIRED",
-                    "Polymarket CLOB v2 requires this wallet to be onboarded via "
-                            + "polymarket.com first: deposit USDC and place at least one small "
-                            + "trade through the official UI to deploy your deposit-wallet proxy. "
-                            + "Direct EOA trading was deprecated in the 2026-04-22 v2 migration. "
-                            + "Tracker: https://github.com/Polymarket/py-clob-client-v2/issues/51. "
+                    "Polymarket requires trading through your trading wallet: activate it and "
+                            + "approve trading on the Wallet tab, then place the order again. "
                             + "Upstream: " + safeBody);
         }
         if (status == 400 && lower.contains("order_version_mismatch")) {

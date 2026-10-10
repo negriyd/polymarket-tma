@@ -4,6 +4,10 @@ import com.polymarket.tma.auth.entity.AppUser;
 import com.polymarket.tma.auth.repo.AppUserRepository;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
+import com.polymarket.tma.trading.relayer.DepositWalletBatch;
+import com.polymarket.tma.trading.relayer.DepositWalletDtos;
+import com.polymarket.tma.trading.relayer.DepositWalletService;
+import com.polymarket.tma.trading.relayer.RelayerProperties;
 import com.polymarket.tma.wallet.ApprovalDtos;
 import java.math.BigInteger;
 import java.util.List;
@@ -24,12 +28,35 @@ public class RedeemService {
 
     private static final int POLYGON_CHAIN_ID = 137;
 
+    /** Both outcomes of a binary market; losing balances simply pay out 0. */
+    private static final List<BigInteger> BOTH_OUTCOMES = List.of(BigInteger.ONE, BigInteger.TWO);
+
     private final AppProperties props;
     private final AppUserRepository userRepo;
+    private final RelayerProperties relayerProps;
+    private final DepositWalletService depositWallets;
 
-    public RedeemService(AppProperties props, AppUserRepository userRepo) {
+    public RedeemService(AppProperties props, AppUserRepository userRepo,
+                         RelayerProperties relayerProps, DepositWalletService depositWallets) {
         this.props = props;
         this.userRepo = userRepo;
+        this.relayerProps = relayerProps;
+        this.depositWallets = depositWallets;
+    }
+
+    /**
+     * Claim for CLOB v2 positions, which sit in the deposit wallet: a gasless batch calling
+     * {@code redeemPositions(pUSD, 0x0, conditionId, [1, 2])} on the CTF collateral adapter, which
+     * redeems the CTF tokens and pays out pUSD (per Polymarket "Manage Positions" docs).
+     */
+    public DepositWalletDtos.PreparedBatch prepareBatch(long userId, RedeemDtos.BatchRequest req) {
+        String adapter = Boolean.TRUE.equals(req.negRisk())
+                ? relayerProps.negRiskCtfCollateralAdapterAddress()
+                : relayerProps.ctfCollateralAdapterAddress();
+        String calldata = RedeemCalldataBuilder.redeemPositions(
+                relayerProps.collateralAddress(), null, req.conditionId(), BOTH_OUTCOMES);
+        return depositWallets.prepareBatch(userId, "REDEEM",
+                List.of(new DepositWalletBatch.Call(adapter, "0", calldata)));
     }
 
     public RedeemDtos.PrepareResponse prepare(long userId, RedeemDtos.PrepareRequest req) {

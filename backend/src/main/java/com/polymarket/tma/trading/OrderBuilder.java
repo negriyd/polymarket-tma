@@ -8,12 +8,14 @@ import com.polymarket.tma.trading.dto.OrderDtos;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
+import org.web3j.crypto.Hash;
 import org.web3j.crypto.StructuredDataEncoder;
 import org.web3j.utils.Numeric;
 
@@ -50,6 +52,15 @@ import org.web3j.utils.Numeric;
  * <p>All {@code uint256} / {@code uint8} fields in {@code domain} and {@code message} are emitted
  * as <strong>decimal strings</strong> so Jackson never loses precision on big token ids and viem
  * / Privy parse values consistently. {@code bytes32} fields are emitted as 0x-prefixed 64-char hex.
+ *
+ * <p><strong>POLY_1271 (Deposit Wallet).</strong> CLOB v2 rejects raw-EOA makers ("maker address
+ * not allowed, please use the deposit wallet flow"). For {@code signatureType=3} both {@code maker}
+ * and {@code signer} are the user's deposit wallet, and the EOA signs an ERC-7739
+ * {@code TypedDataSign} wrapper around the order instead of the order itself — that wrapper is
+ * what {@link BuiltOrder#typedData()} holds. {@link #finalizeSignature} then packs the wallet's
+ * 65-byte signature into the ERC-1271 blob the deposit wallet validates. Mirrors
+ * {@code ExchangeOrderBuilderV2.buildOrderSignature} in {@code @polymarket/clob-client-v2}; verified
+ * against an order CLOB accepted on 2026-10-11 (see {@code tools/clob-v2-probe}).
  */
 @Component
 public class OrderBuilder {
@@ -62,6 +73,19 @@ public class OrderBuilder {
     private static final BigInteger TOKEN_DECIMALS_FACTOR = BigInteger.valueOf(1_000_000L);         // 6 for CTF outcome tokens
     /** Default for both {@code metadata} and {@code builder} bytes32 fields when absent. */
     private static final String BYTES32_ZERO = "0x" + "0".repeat(64);
+
+    /** EIP-712 encodeType of the v2 order; hashed into the type hash and appended to POLY_1271 signatures. */
+    static final String ORDER_TYPE_STRING = "Order(uint256 salt,address maker,address signer,uint256 tokenId,"
+            + "uint256 makerAmount,uint256 takerAmount,uint8 side,uint8 signatureType,uint256 timestamp,"
+            + "bytes32 metadata,bytes32 builder)";
+    private static final byte[] ORDER_TYPE_HASH = Hash.sha3(ORDER_TYPE_STRING.getBytes(StandardCharsets.UTF_8));
+    private static final byte[] DOMAIN_TYPE_HASH = Hash.sha3(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                    .getBytes(StandardCharsets.UTF_8));
+    /** ERC-7739 nested-signing app domain of the Polymarket deposit wallet. */
+    private static final String DEPOSIT_WALLET_DOMAIN_NAME = "DepositWallet";
+    private static final String DEPOSIT_WALLET_DOMAIN_VERSION = "1";
+    private static final int ECDSA_SIGNATURE_BYTES = 65;
 
     private static final SecureRandom RNG = new SecureRandom();
 
@@ -103,7 +127,12 @@ public class OrderBuilder {
         // submission as {"error":"Invalid order payload"}. py-clob-client-v2 generates salts via
         // `random.random() * time_ms()` — capped well under 2^53. We use 48 bits (~2.8e14).
         BigInteger salt = BigInteger.valueOf(RNG.nextLong() & 0x0000_FFFF_FFFF_FFFFL);
-        long timestampMs = Instant.now().toEpochMilli();
+        return build(makerAddress, signerAddress, req, negRisk, salt, Instant.now().toEpochMilli());
+    }
+
+    /** Deterministic variant (fixed salt / timestamp) so tests can replay known-good orders. */
+    BuiltOrder build(String makerAddress, String signerAddress, OrderDtos.PrepareOrderRequest req,
+                     boolean negRisk, BigInteger salt, long timestampMs) {
         // Expiration is API-only in v2 (NOT part of the EIP-712 struct). Default "0" means
         // never expire; we plumb req.expiration() through if the caller asked for it.
         long expirationSec = req.expiration() != null ? req.expiration() : 0L;
@@ -114,7 +143,14 @@ public class OrderBuilder {
             case EOA -> 0;
             case POLY_PROXY -> 1;
             case POLY_GNOSIS_SAFE -> 2;
+            case POLY_1271 -> 3;
         };
+        // Deposit wallet validates via ERC-1271 on itself, so the order's signer is the wallet,
+        // not the EOA that produces the inner ECDSA signature.
+        boolean poly1271 = sigType == OrderDtos.SignatureType.POLY_1271;
+        if (poly1271) {
+            signerAddress = makerAddress;
+        }
 
         BigInteger sizeShares = req.size().multiply(new BigDecimal(TOKEN_DECIMALS_FACTOR)).toBigInteger();
         BigInteger usdcAmount = req.size().multiply(req.price()).multiply(new BigDecimal(USDC_DECIMALS_FACTOR)).toBigInteger();
@@ -176,6 +212,10 @@ public class OrderBuilder {
         typedData.put("primaryType", "Order");
         typedData.put("domain", domain);
         typedData.put("message", message);
+        String orderHash = eip712DigestHex(typedData);
+        if (poly1271) {
+            typedData = typedDataSignWrapper(domain, message, types, makerAddress);
+        }
 
         // wireOrder = the signed-message fields PLUS the API-only `expiration` field. When the
         // wallet returns its signature, ClobOrderClient.submit() clones this map, sets `signature`
@@ -183,8 +223,119 @@ public class OrderBuilder {
         Map<String, Object> wireOrder = new LinkedHashMap<>(message);
         wireOrder.put("expiration", u256Decimal(expirationSec));
 
-        String orderHash = eip712DigestHex(typedData);
         return new BuiltOrder(orderHash, makerAmount, takerAmount, typedData, wireOrder);
+    }
+
+    /**
+     * ERC-7739 {@code TypedDataSign} wrapper the EOA signs for a POLY_1271 order: same exchange
+     * domain, the order nested as {@code contents}, plus the deposit wallet's own domain fields.
+     */
+    private static Map<String, Object> typedDataSignWrapper(Map<String, Object> domain,
+                                                            Map<String, Object> order,
+                                                            Map<String, Object> orderTypes,
+                                                            String depositWallet) {
+        Map<String, Object> types = new LinkedHashMap<>();
+        types.put("EIP712Domain", orderTypes.get("EIP712Domain"));
+        types.put("TypedDataSign", List.of(
+                Map.of("name", "contents", "type", "Order"),
+                Map.of("name", "name", "type", "string"),
+                Map.of("name", "version", "type", "string"),
+                Map.of("name", "chainId", "type", "uint256"),
+                Map.of("name", "verifyingContract", "type", "address"),
+                Map.of("name", "salt", "type", "bytes32")));
+        types.put("Order", orderTypes.get("Order"));
+
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("contents", order);
+        message.put("name", DEPOSIT_WALLET_DOMAIN_NAME);
+        message.put("version", DEPOSIT_WALLET_DOMAIN_VERSION);
+        message.put("chainId", u256Decimal(CHAIN_ID_POLYGON));
+        message.put("verifyingContract", depositWallet);
+        message.put("salt", BYTES32_ZERO);
+
+        Map<String, Object> typedData = new LinkedHashMap<>();
+        typedData.put("types", types);
+        typedData.put("primaryType", "TypedDataSign");
+        typedData.put("domain", domain);
+        typedData.put("message", message);
+        return typedData;
+    }
+
+    /**
+     * Turns the wallet's signature over {@link BuiltOrder#typedData()} into the value CLOB expects
+     * in {@code order.signature}. Non-POLY_1271 orders pass through unchanged. For POLY_1271 the
+     * 65-byte ECDSA signature is packed as
+     * {@code sig ‖ appDomainSeparator ‖ contentsHash ‖ ORDER_TYPE_STRING ‖ uint16(len(ORDER_TYPE_STRING))}.
+     */
+    @SuppressWarnings("unchecked")
+    public String finalizeSignature(BuiltOrder built, String walletSignature) {
+        Map<String, Object> order = built.wireOrder();
+        if (order == null || !"3".equals(String.valueOf(order.get("signatureType")))) {
+            return walletSignature;
+        }
+        byte[] sig = Numeric.hexStringToByteArray(walletSignature);
+        if (sig.length != ECDSA_SIGNATURE_BYTES) {
+            throw new IllegalArgumentException(
+                    "POLY_1271 expects a 65-byte wallet signature, got " + sig.length + " bytes");
+        }
+        Map<String, Object> domain = (Map<String, Object>) built.typedData().get("domain");
+        byte[] typeString = ORDER_TYPE_STRING.getBytes(StandardCharsets.UTF_8);
+
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        out.writeBytes(sig);
+        out.writeBytes(appDomainSeparator(domain));
+        out.writeBytes(orderStructHash(order));
+        out.writeBytes(typeString);
+        out.write((typeString.length >> 8) & 0xff);
+        out.write(typeString.length & 0xff);
+        return Numeric.toHexString(out.toByteArray());
+    }
+
+    private static byte[] appDomainSeparator(Map<String, Object> domain) {
+        return Hash.sha3(concat(
+                DOMAIN_TYPE_HASH,
+                Hash.sha3(String.valueOf(domain.get("name")).getBytes(StandardCharsets.UTF_8)),
+                Hash.sha3(String.valueOf(domain.get("version")).getBytes(StandardCharsets.UTF_8)),
+                word(new BigInteger(String.valueOf(domain.get("chainId")))),
+                word(String.valueOf(domain.get("verifyingContract")))));
+    }
+
+    /** EIP-712 {@code hashStruct(Order)} — the ERC-7739 "contents hash". */
+    private static byte[] orderStructHash(Map<String, Object> o) {
+        return Hash.sha3(concat(
+                ORDER_TYPE_HASH,
+                word(uint(o.get("salt"))),
+                word(String.valueOf(o.get("maker"))),
+                word(String.valueOf(o.get("signer"))),
+                word(uint(o.get("tokenId"))),
+                word(uint(o.get("makerAmount"))),
+                word(uint(o.get("takerAmount"))),
+                word(uint(o.get("side"))),
+                word(uint(o.get("signatureType"))),
+                word(uint(o.get("timestamp"))),
+                Numeric.hexStringToByteArray(String.valueOf(o.get("metadata"))),
+                Numeric.hexStringToByteArray(String.valueOf(o.get("builder")))));
+    }
+
+    private static BigInteger uint(Object v) {
+        return new BigInteger(String.valueOf(v));
+    }
+
+    /** ABI-encodes an unsigned integer or an address as a left-padded 32-byte word. */
+    private static byte[] word(BigInteger v) {
+        return Numeric.toBytesPadded(v, 32);
+    }
+
+    private static byte[] word(String address) {
+        return word(Numeric.toBigInt(address));
+    }
+
+    private static byte[] concat(byte[]... parts) {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        for (byte[] p : parts) {
+            out.writeBytes(p);
+        }
+        return out.toByteArray();
     }
 
     /**
@@ -224,7 +375,11 @@ public class OrderBuilder {
     /**
      * Snapshot of a prepared order kept in Redis until the wallet posts its signature back.
      *
-     * <p>{@link #wireOrder} mirrors {@link #typedData}'s {@code message} plus the v2 API-only
+     * <p>{@link #typedData} is what the wallet signs: the order itself, or for POLY_1271 the
+     * ERC-7739 {@code TypedDataSign} wrapper. {@link #orderHash} is always the order's own EIP-712
+     * digest (the id CLOB returns as {@code orderID}).
+     *
+     * <p>{@link #wireOrder} mirrors the order message plus the v2 API-only
      * {@code expiration} field. {@link ClobOrderClient} clones it, attaches the wallet signature,
      * and POSTs.
      *

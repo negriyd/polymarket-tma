@@ -13,7 +13,8 @@ public record AppProperties(
         Polymarket polymarket,
         Polygon polygon,
         Privy privy,
-        Fees fees
+        Fees fees,
+        Bets bets
 ) {
     public record Cors(List<String> allowedOrigins) {}
 
@@ -81,6 +82,47 @@ public record AppProperties(
                     && spreadBps > 0
                     && recipientAddress != null
                     && !recipientAddress.isBlank();
+        }
+    }
+
+    /**
+     * Internal parimutuel betting (primary path since CLOB v2 deposit-wallet blockers).
+     *
+     * <p>Users pay USDC to {@code treasuryAddress}; bets are recorded in PostgreSQL and resolved
+     * off-chain using Polymarket Gamma as oracle (Phase 2).
+     */
+    public record Bets(
+            Boolean featureEnabled,
+            String treasuryAddress,
+            String treasuryPrivateKey,
+            String adminSecret,
+            Integer platformFeeBps,
+            java.math.BigDecimal minBetUsdc,
+            java.math.BigDecimal minWithdrawUsdc,
+            Integer lockBeforeEndMinutes,
+            Integer resolutionGraceHours,
+            Integer withdrawCooldownMinutes
+    ) {
+        public boolean enabled() {
+            return Boolean.TRUE.equals(featureEnabled)
+                    && treasuryAddress != null
+                    && !treasuryAddress.isBlank();
+        }
+
+        public int platformFeeBpsOrZero() {
+            return platformFeeBps == null ? 0 : platformFeeBps;
+        }
+
+        public int lockBeforeEndMinutesOrDefault() {
+            return lockBeforeEndMinutes == null || lockBeforeEndMinutes < 0 ? 15 : lockBeforeEndMinutes;
+        }
+
+        public int resolutionGraceHoursOrDefault() {
+            return resolutionGraceHours == null || resolutionGraceHours < 0 ? 24 : resolutionGraceHours;
+        }
+
+        public int withdrawCooldownMinutesOrDefault() {
+            return withdrawCooldownMinutes == null || withdrawCooldownMinutes < 0 ? 5 : withdrawCooldownMinutes;
         }
     }
 }
