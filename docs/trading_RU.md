@@ -46,7 +46,7 @@
 | Подпись POLY_1271 (обёртка ERC-7739, `finalizeSignature`) | `trading/OrderBuilder.java` |
 | Relayer-клиент: адрес кошелька, `WALLET-CREATE`, `WALLET`-пакеты, builder HMAC | `trading/relayer/RelayerClient.java`, `DepositWalletAddress`, `DepositWalletBatch`, `BuilderAuthSigner` |
 | Онбординг, разрешения, общий механизм пакетов | `trading/relayer/DepositWalletService.java`, `DepositWalletApprovals`, `PendingBatchCache` |
-| Пополнение и вывод через мост | `trading/bridge/BridgeClient.java`, `FundingService`, `WithdrawService` |
+| Пополнение и вывод через мост | `trading/bridge/BridgeClient.java`, `FundingService`, `BridgeWithdrawService` |
 | Claim (pUSD через CTF collateral adapter) | `redeem/RedeemService.prepareBatch` |
 | Фронтенд: кошелёк, Top up, Withdraw | `features/wallet/DepositWalletSection.tsx`, `FundingPanel.tsx`, `WithdrawPanel.tsx`, `relayerTx.ts` |
 | Фронтенд: сделка, Claim | `features/trading/ClobTradeSheet.tsx`, `PositionRow.tsx` |

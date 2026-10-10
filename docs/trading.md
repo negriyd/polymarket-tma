@@ -31,7 +31,7 @@ Since April–May 2026 Polymarket rejects orders whose `maker` is a plain EOA. E
 | POLY_1271 signing (ERC-7739 wrapper, `finalizeSignature`) | `trading/OrderBuilder.java` |
 | Relayer client: wallet address, `WALLET-CREATE`, `WALLET` batches, builder HMAC | `trading/relayer/RelayerClient.java`, `DepositWalletAddress`, `DepositWalletBatch`, `BuilderAuthSigner` |
 | Onboarding, approvals, generic batches | `trading/relayer/DepositWalletService.java`, `DepositWalletApprovals`, `PendingBatchCache` |
-| Bridge top-up and withdrawal | `trading/bridge/BridgeClient.java`, `FundingService`, `WithdrawService` |
+| Bridge top-up and withdrawal | `trading/bridge/BridgeClient.java`, `FundingService`, `BridgeWithdrawService` |
 | Claim (pUSD via CTF collateral adapter) | `redeem/RedeemService.prepareBatch` |
 | Frontend: wallet, Top up, Withdraw | `features/wallet/DepositWalletSection.tsx`, `FundingPanel.tsx`, `WithdrawPanel.tsx`, `relayerTx.ts` |
 | Frontend: trade, Claim | `features/trading/ClobTradeSheet.tsx`, `PositionRow.tsx` |

@@ -20,9 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/wallet/deposit-wallet/withdraw")
 public class WithdrawController {
 
-    private final WithdrawService service;
+    private final BridgeWithdrawService service;
 
-    public WithdrawController(WithdrawService service) {
+    public WithdrawController(BridgeWithdrawService service) {
         this.service = service;
     }
 

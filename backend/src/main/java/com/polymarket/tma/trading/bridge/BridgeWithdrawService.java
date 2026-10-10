@@ -23,9 +23,9 @@ import org.springframework.stereotype.Service;
  * the money leaves via a gasless deposit-wallet batch the owner signs.
  */
 @Service
-public class WithdrawService {
+public class BridgeWithdrawService {
 
-    private static final Logger log = LoggerFactory.getLogger(WithdrawService.class);
+    private static final Logger log = LoggerFactory.getLogger(BridgeWithdrawService.class);
 
     static final String POLYGON_CHAIN_ID = "137";
     private static final Duration BRIDGE_TIMEOUT = Duration.ofSeconds(10);
@@ -42,7 +42,7 @@ public class WithdrawService {
     private final BridgeClient bridge;
     private final ApprovalStatusReader reader;
 
-    public WithdrawService(AppUserRepository userRepo,
+    public BridgeWithdrawService(AppUserRepository userRepo,
                            DepositWalletService depositWallets,
                            RelayerProperties relayerProps,
                            FundingService funding,

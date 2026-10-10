@@ -30,7 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 
 @ExtendWith(MockitoExtension.class)
-class WithdrawServiceTest {
+class BridgeWithdrawServiceTest {
 
     private static final String EOA = "0x415aE735eB964da56C11D0a53F0f082b85FcbEA5";
     private static final String WALLET = "0xa1D17A5546aD9166Cb14071c36a5741d812CbE57";
@@ -46,7 +46,7 @@ class WithdrawServiceTest {
     @Mock private BridgeClient bridge;
     @Mock private ApprovalStatusReader reader;
 
-    private WithdrawService service;
+    private BridgeWithdrawService service;
 
     @BeforeEach
     void setUp() {
@@ -60,7 +60,7 @@ class WithdrawServiceTest {
         lenient().when(depositWallets.prepareCollateralTransfer(anyLong(), anyString(), anyString(), any())).thenReturn(BATCH);
         RelayerProperties relayer = new RelayerProperties(null, null, null, null, null, null, null,
                 PUSD, null, null, null, null, null);
-        service = new WithdrawService(userRepo, depositWallets, relayer, funding, bridge, reader);
+        service = new BridgeWithdrawService(userRepo, depositWallets, relayer, funding, bridge, reader);
     }
 
     @Test
