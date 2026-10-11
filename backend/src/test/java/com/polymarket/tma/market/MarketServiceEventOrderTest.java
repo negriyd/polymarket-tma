@@ -58,10 +58,10 @@ class MarketServiceEventOrderTest {
     @Test
     void seriesChipsArePastThenOpenInDateOrder() {
         var events = List.of(
-                new com.polymarket.tma.market.dto.SeriesDto.Event("a", "Jul", Instant.parse("2026-07-31T00:00:00Z"), true),
-                new com.polymarket.tma.market.dto.SeriesDto.Event("c", "Nov", Instant.parse("2026-11-03T00:00:00Z"), false),
-                new com.polymarket.tma.market.dto.SeriesDto.Event("b", "Oct", Instant.parse("2026-10-31T00:00:00Z"), false),
-                new com.polymarket.tma.market.dto.SeriesDto.Event("z", "Sep", Instant.parse("2026-09-30T00:00:00Z"), true));
+                new com.polymarket.tma.market.dto.SeriesDto.Event("a", "Jul", Instant.parse("2026-07-31T00:00:00Z"), true, null),
+                new com.polymarket.tma.market.dto.SeriesDto.Event("c", "Nov", Instant.parse("2026-11-03T00:00:00Z"), false, null),
+                new com.polymarket.tma.market.dto.SeriesDto.Event("b", "Oct", Instant.parse("2026-10-31T00:00:00Z"), false, null),
+                new com.polymarket.tma.market.dto.SeriesDto.Event("z", "Sep", Instant.parse("2026-09-30T00:00:00Z"), true, null));
 
         assertThat(MarketService.pickSeriesEvents(events, "b"))
                 .extracting(com.polymarket.tma.market.dto.SeriesDto.Event::id)

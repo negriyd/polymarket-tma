@@ -30,8 +30,10 @@ function formatVolume(v?: number): string {
 
 /** Polymarket dates its events in US Eastern time ("Nov 3" for 04:59 UTC Nov 4). */
 function chipLabel(e: SeriesEvent, locale: string): string {
-  if (!e.endDate) return e.title;
-  return new Date(e.endDate).toLocaleDateString(locale, {
+  // Past events often share the ladder's last date as endDate; when they closed tells them apart.
+  const date = e.closed && !e.current ? (e.closedTime ?? e.endDate) : e.endDate;
+  if (!date) return e.title;
+  return new Date(date).toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
     timeZone: 'America/New_York',

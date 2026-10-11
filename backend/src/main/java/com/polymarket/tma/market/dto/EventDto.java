@@ -27,6 +27,6 @@ public record EventDto(String id, String slug, String title, List<MarketDto> mar
     /**
      * @param marketKey market to open for this event; null for the current event
      */
-    public record SeriesEvent(String id, String title, Instant endDate, boolean closed, boolean current,
-                              String marketKey) {}
+    public record SeriesEvent(String id, String title, Instant endDate, Instant closedTime, boolean closed,
+                              boolean current, String marketKey) {}
 }

@@ -64,6 +64,7 @@ export interface SeriesEvent {
   id: string;
   title: string;
   endDate?: string | null;
+  closedTime?: string | null;
   closed: boolean;
   current: boolean;
   /** Market to open for this event; null for the current one. */

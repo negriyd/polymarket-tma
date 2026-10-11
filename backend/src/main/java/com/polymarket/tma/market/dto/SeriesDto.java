@@ -14,6 +14,8 @@ public record SeriesDto(String id, String title, List<Event> events) {
             String id,
             String title,
             @JsonDeserialize(using = PolymarketInstantDeserializer.class) Instant endDate,
-            Boolean closed) {
+            Boolean closed,
+            /** When a past event closed; its endDate is often the last date of the ladder, shared by siblings. */
+            @JsonDeserialize(using = PolymarketInstantDeserializer.class) Instant closedTime) {
     }
 }

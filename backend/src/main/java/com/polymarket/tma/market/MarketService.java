@@ -186,11 +186,12 @@ public class MarketService {
                     return Flux.fromIterable(picked)
                             .flatMapSequential(e -> e.id().equals(event.id())
                                     ? Mono.just(new EventDto.SeriesEvent(e.id(), event.title(), e.endDate(),
-                                            Boolean.TRUE.equals(e.closed()), true, null))
+                                            e.closedTime(), Boolean.TRUE.equals(e.closed()), true, null))
                                     : rawEvent(e.id(), locale)
                                             .map(MarketService::openMarketsInOrder)
                                             .map(ev -> new EventDto.SeriesEvent(e.id(), ev.title(), e.endDate(),
-                                                    Boolean.TRUE.equals(e.closed()), false, entryMarketKey(ev)))
+                                                    e.closedTime(), Boolean.TRUE.equals(e.closed()), false,
+                                                    entryMarketKey(ev)))
                                             .onErrorResume(err -> Mono.empty()), 4)
                             .filter(se -> se.current() || se.marketKey() != null)
                             .collectList();
