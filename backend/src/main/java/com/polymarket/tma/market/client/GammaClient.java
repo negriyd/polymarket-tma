@@ -239,18 +239,26 @@ public class GammaClient {
         if (conditionId == null || conditionId.isBlank()) {
             return Mono.empty();
         }
+        // Closed markets are only listed with closed=true (same as findByConditionId).
+        return eventIdOf(conditionId, false).switchIfEmpty(Mono.defer(() -> eventIdOf(conditionId, true)))
+                .doOnError(e -> log.warn("Gamma resolveEventIdForCondition failed: {}", e.toString()));
+    }
+
+    private Mono<String> eventIdOf(String conditionId, boolean closed) {
         return client.get()
-                .uri(uri -> uri.path("/markets")
-                        .queryParam("condition_ids", conditionId)
-                        .queryParam("limit", 1)
-                        .build())
+                .uri(uri -> {
+                    uri.path("/markets").queryParam("condition_ids", conditionId).queryParam("limit", 1);
+                    if (closed) {
+                        uri.queryParam("closed", true);
+                    }
+                    return uri.build();
+                })
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::mapError)
                 .bodyToMono(JsonNode.class)
-                .map(GammaClient::firstEventIdFromMarketsResponse)
-                .filter(id -> id != null && !id.isBlank())
-                .retryWhen(retrySpec("resolveEventId"))
-                .doOnError(e -> log.warn("Gamma resolveEventIdForCondition failed: {}", e.toString()));
+                .flatMap(root -> Mono.justOrEmpty(firstEventIdFromMarketsResponse(root)))
+                .filter(id -> !id.isBlank())
+                .retryWhen(retrySpec("resolveEventId"));
     }
 
     /**
@@ -380,10 +388,13 @@ public class GammaClient {
                 .doBeforeRetry(s -> log.info("Retrying {} attempt {}", op, s.totalRetries() + 1));
     }
 
+    /** Upstream 5xx / 429 and network failures only — never bugs in our own mapping code. */
     private boolean isRetryable(Throwable t) {
         if (t instanceof ApiException api) {
             return api.getCode().startsWith("GAMMA_HTTP_5") || api.getCode().equals("GAMMA_HTTP_429");
         }
-        return true;
+        return t instanceof org.springframework.web.reactive.function.client.WebClientRequestException
+                || t instanceof java.util.concurrent.TimeoutException
+                || t instanceof java.io.IOException;
     }
 }

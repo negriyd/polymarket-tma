@@ -50,4 +50,25 @@ class GammaFindByConditionIdTest {
         assertThat(m.closed()).isTrue();
         assertThat(m.id()).isEqualTo("7");
     }
+
+    @Test
+    void resolvesTheEventOfAClosedMarket() {
+        wm.stubFor(get(urlPathEqualTo("/markets")).withQueryParam("condition_ids", equalTo("0xc"))
+                .withQueryParam("closed", absent())
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody("[]")));
+        wm.stubFor(get(urlPathEqualTo("/markets")).withQueryParam("condition_ids", equalTo("0xc"))
+                .withQueryParam("closed", equalTo("true"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json")
+                        .withBody("[{\"conditionId\":\"0xc\",\"events\":[{\"id\":\"948348\"}]}]")));
+
+        assertThat(gamma.resolveEventIdForCondition("0xc").block()).isEqualTo("948348");
+    }
+
+    @Test
+    void unknownMarketHasNoEventInsteadOfAnError() {
+        wm.stubFor(get(urlPathEqualTo("/markets"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody("[]")));
+
+        assertThat(gamma.resolveEventIdForCondition("0xnone").blockOptional()).isEmpty();
+    }
 }
