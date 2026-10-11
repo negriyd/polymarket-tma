@@ -62,7 +62,7 @@ services:
     profiles: ["full"]
 
   frontend:
-    image: docker.io/negriyd/polymarket-tma-frontend:2026-10-11.18
+    image: docker.io/negriyd/polymarket-tma-frontend:2026-10-11.19
     container_name: polymarket-frontend
     depends_on:
       backend:

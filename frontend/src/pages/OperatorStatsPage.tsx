@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api/endpoints';
@@ -5,6 +6,7 @@ import { Spinner } from '@/components/Spinner';
 import { ErrorView } from '@/components/ErrorView';
 import { formatError } from '@/lib/errors';
 import { useT } from '@/lib/i18n';
+import { readChecklistPreview, writeChecklistPreview } from '@/features/onboarding/firstBet';
 
 function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -32,6 +34,8 @@ export function OperatorStatsPage() {
 
       {stats.isLoading && <Spinner />}
       {stats.isError && <ErrorView message={formatError(stats.error)} onRetry={() => stats.refetch()} />}
+
+      <ChecklistPreview />
 
       {stats.data && (
         <>
@@ -113,5 +117,57 @@ export function OperatorStatsPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** Lets the operator see the first-bet checklist as a new user would, at any step. */
+function ChecklistPreview() {
+  const t = useT();
+  const [value, setValue] = useState(readChecklistPreview);
+  const set = (v: number | null) => {
+    writeChecklistPreview(v);
+    setValue(v);
+  };
+  return (
+    <section className="space-y-2 rounded-xl bg-tg-secondary p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-tg-text">{t('op.preview')}</h2>
+          <p className="text-[11px] text-tg-hint">{t('op.previewHint')}</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={value != null}
+          onClick={() => set(value == null ? 0 : null)}
+          className={
+            value != null
+              ? 'shrink-0 rounded-full bg-tg-button px-3 py-1 text-xs font-medium text-tg-buttonText'
+              : 'shrink-0 rounded-full bg-tg-bg px-3 py-1 text-xs font-medium text-tg-hint'
+          }
+        >
+          {value != null ? t('common.on') : t('common.off')}
+        </button>
+      </div>
+      {value != null && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-tg-hint">{t('op.previewDone')}</span>
+          {[0, 1, 2, 3, 4].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => set(n)}
+              className={
+                n === value
+                  ? 'h-7 w-7 rounded-md bg-tg-button text-xs font-semibold text-tg-buttonText'
+                  : 'h-7 w-7 rounded-md bg-tg-bg text-xs text-tg-text'
+              }
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

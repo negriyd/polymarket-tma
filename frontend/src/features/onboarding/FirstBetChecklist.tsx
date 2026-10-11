@@ -6,7 +6,7 @@ import { api } from '@/lib/api/endpoints';
 import { useT, type MessageKey } from '@/lib/i18n';
 import { useWallet } from '@/features/wallet/useWallet';
 import { hapticImpact } from '@/lib/telegram/webApp';
-import { FIRST_BET_KEY } from './firstBet';
+import { FIRST_BET_KEY, readChecklistPreview } from './firstBet';
 
 const HIDDEN_KEY = 'firstBetChecklistHidden';
 function readFlag(key: string): boolean {
@@ -32,6 +32,7 @@ export function FirstBetChecklist() {
   const navigate = useNavigate();
   const w = useWallet();
   const [hidden, setHidden] = useState(() => readFlag(HIDDEN_KEY));
+  const [preview] = useState(readChecklistPreview);
   const address = w.authenticated ? w.address : undefined;
 
   const clob = useQuery({
@@ -53,13 +54,13 @@ export function FirstBetChecklist() {
     staleTime: 30_000,
   });
 
-  if (hidden || !w.ready) return null;
+  if ((hidden && preview == null) || !w.ready) return null;
   // Privy reports "authenticated" a moment before the embedded wallet's address is known.
   if (w.authenticated && !w.address) return null;
   // Wait until every step's data has loaded: rendering on partial data flashes the card for users
   // who have already done everything. A failed query counts as settled (the step shows as not done).
   const settled = (q: { isPending: boolean; fetchStatus: string }) => !q.isPending || q.fetchStatus === 'idle';
-  if (address && !(settled(clob) && settled(dw) && settled(positions))) return null;
+  if (preview == null && address && !(settled(clob) && settled(dw) && settled(positions))) return null;
 
   const balance = dw.data?.collateralBalance != null ? BigInt(dw.data.collateralBalance) : 0n;
   const steps: Step[] = [
@@ -70,7 +71,8 @@ export function FirstBetChecklist() {
     { key: 'onb.bet', done: readFlag(FIRST_BET_KEY) || (positions.data?.length ?? 0) > 0, to: '/markets' },
   ];
   // A later step can't be done before an earlier one (e.g. stale data): count only the prefix.
-  const doneCount = steps.findIndex((s) => !s.done) < 0 ? steps.length : steps.findIndex((s) => !s.done);
+  const firstUndone = steps.findIndex((s) => !s.done);
+  const doneCount = preview ?? (firstUndone < 0 ? steps.length : firstUndone);
   if (doneCount === steps.length) return null;
   const next = steps[doneCount];
 
@@ -87,7 +89,10 @@ export function FirstBetChecklist() {
     <section className="space-y-2 rounded-xl bg-tg-secondary p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-tg-text">{t('onb.title')}</p>
+          <p className="text-sm font-semibold text-tg-text">
+            {t('onb.title')}
+            {preview != null && <span className="ml-1 text-[10px] font-normal text-amber-500">{t('onb.previewBadge')}</span>}
+          </p>
           <p className="text-[11px] text-tg-hint">{t('onb.progress', { done: doneCount, total: steps.length })}</p>
         </div>
         <button type="button" onClick={hide} className="text-xs text-tg-hint" aria-label={t('common.hide')}>
