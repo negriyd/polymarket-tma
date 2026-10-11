@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.RequestHeader;
 
 import com.polymarket.tma.market.dto.CommentDto;
+import com.polymarket.tma.market.dto.EventDto;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.dto.MarketListResponse;
 import com.polymarket.tma.market.dto.OrderbookDto;
@@ -50,6 +51,13 @@ public class MarketController {
                                @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String language) {
         return service.get(conditionId)
                 .flatMap(m -> translations.translateMarket(m, MarketLocale.fromHeader(language)));
+    }
+
+    /** Sibling markets of this market's event (other dates or candidates), for choosing which to trade. */
+    @GetMapping("/{marketKey}/event")
+    public Mono<EventDto> event(@PathVariable String marketKey,
+                                @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String language) {
+        return service.event(marketKey, MarketLocale.fromHeader(language));
     }
 
     @GetMapping("/{marketKey}/comments")

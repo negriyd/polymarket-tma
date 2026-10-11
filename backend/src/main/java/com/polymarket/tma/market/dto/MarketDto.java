@@ -51,13 +51,15 @@ public record MarketDto(
         /** CLOB price grid (0.01 or 0.001); an off-grid limit price is rejected by CLOB. */
         @JsonProperty("orderPriceMinTickSize") BigDecimal orderPriceMinTickSize,
         /** Smallest order CLOB accepts, in outcome shares (typically 5). */
-        @JsonProperty("orderMinSize") BigDecimal orderMinSize
+        @JsonProperty("orderMinSize") BigDecimal orderMinSize,
+        /** Label of this market inside its multi-market event ("Oct 31", "Gavin Newsom"); translated by Gamma. */
+        @JsonProperty("groupItemTitle") String groupItemTitle
 ) {
     /** Copy with a translated {@code question}. */
     public MarketDto withQuestion(String translated) {
         return new MarketDto(id, conditionId, translated, slug, description, category, image, icon, endDate,
                 gameStartTime, marketSlug, active, closed, acceptingOrders, archived, volume, volume24h, liquidity,
-                outcomes, clobTokenIds, outcomePrices, negRisk, orderPriceMinTickSize, orderMinSize);
+                outcomes, clobTokenIds, outcomePrices, negRisk, orderPriceMinTickSize, orderMinSize, groupItemTitle);
     }
 
     /** Market without CLOB order constraints (tests, cache entries written before they were mapped). */
@@ -69,6 +71,6 @@ public record MarketDto(
                      Boolean negRisk) {
         this(id, conditionId, question, slug, description, category, image, icon, endDate, gameStartTime,
                 marketSlug, active, closed, acceptingOrders, archived, volume, volume24h, liquidity,
-                outcomes, clobTokenIds, outcomePrices, negRisk, null, null);
+                outcomes, clobTokenIds, outcomePrices, negRisk, null, null, null);
     }
 }

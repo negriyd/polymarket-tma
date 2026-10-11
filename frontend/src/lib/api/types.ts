@@ -43,6 +43,16 @@ export interface Market {
   orderPriceMinTickSize?: number;
   /** Smallest order CLOB accepts, in shares. */
   orderMinSize?: number;
+  /** Label inside a multi-market event: a date ("Oct 31") or a candidate. */
+  groupItemTitle?: string | null;
+}
+
+/** A Polymarket event and its open markets (date ladder or candidates). */
+export interface MarketEvent {
+  id: string;
+  slug?: string;
+  title: string;
+  markets: Market[];
 }
 
 export interface MarketList {

@@ -8,6 +8,7 @@ import type {
   Funding,
   FeeConfig,
   Market,
+  MarketEvent,
   MarketList,
   MarketComment,
   OrderSignatureType,
@@ -52,6 +53,9 @@ export const api = {
 
   getMarket: (marketKey: string) =>
     http.get<Market>(`/api/markets/${marketKey}`).then((r) => r.data),
+
+  getMarketEvent: (marketKey: string) =>
+    http.get<MarketEvent>(`/api/markets/${encodeURIComponent(marketKey)}/event`).then((r) => r.data),
 
   listMarketComments: (marketKey: string, page = 0, size = 30) =>
     http

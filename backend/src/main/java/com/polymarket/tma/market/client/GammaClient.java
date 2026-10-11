@@ -4,6 +4,7 @@ import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.polymarket.tma.market.dto.CommentDto;
+import com.polymarket.tma.market.dto.EventDto;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.dto.PriceHistoryDto;
 import com.polymarket.tma.market.dto.gamma.PublicSearchResponse;
@@ -163,6 +164,23 @@ public class GammaClient {
                 .bodyToMono(new ParameterizedTypeReference<List<MarketDto>>() {})
                 .retryWhen(retrySpec("listMarketsBySlug"))
                 .doOnError(e -> log.warn("Gamma listMarketsBySlug failed: {}", e.toString()));
+    }
+
+    /** Event with its markets; titles in {@code locale} when given (null = English). */
+    public Mono<EventDto> getEvent(String eventId, String locale) {
+        return client.get()
+                .uri(uri -> {
+                    uri.path("/events/{id}");
+                    if (locale != null) {
+                        uri.queryParam("locale", locale);
+                    }
+                    return uri.build(eventId);
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapError)
+                .bodyToMono(EventDto.class)
+                .retryWhen(retrySpec("getEvent"))
+                .doOnError(e -> log.warn("Gamma getEvent({}) failed: {}", eventId, e.toString()));
     }
 
     /** Markets by condition id with titles in {@code locale} (Gamma falls back to English per market). */

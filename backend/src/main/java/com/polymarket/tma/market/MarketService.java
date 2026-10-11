@@ -6,6 +6,7 @@ import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.market.client.ClobClient;
 import com.polymarket.tma.market.client.GammaClient;
 import com.polymarket.tma.market.dto.CommentDto;
+import com.polymarket.tma.market.dto.EventDto;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.dto.MarketListResponse;
 import com.polymarket.tma.market.dto.OrderbookDto;
@@ -133,6 +134,43 @@ public class MarketService {
                     }
                 })
                 .switchIfEmpty(Mono.just(Collections.emptyList()));
+    }
+
+    /**
+     * The open markets of the event {@code marketKey} belongs to, in the user's {@code locale}. Date
+     * ladders are ordered by end date; same-date sets (candidates) by "Yes" price, as polymarket.com does.
+     */
+    public Mono<EventDto> event(String marketKey, String locale) {
+        return resolveConditionId(marketKey)
+                .flatMap(gamma::resolveEventIdForCondition)
+                .flatMap(eventId -> cache.readThrough(
+                        "pm:event:" + eventId + ":" + (locale == null ? "en" : locale), EventDto.class,
+                        props.polymarket().listCacheTtl(), gamma.getEvent(eventId, locale)))
+                .map(raw -> raw instanceof EventDto e ? e : objectMapper.convertValue(raw, EventDto.class))
+                .map(MarketService::openMarketsInOrder)
+                .switchIfEmpty(Mono.error(ApiException.notFound("EVENT_NOT_FOUND", "No event for " + marketKey)));
+    }
+
+    static EventDto openMarketsInOrder(EventDto event) {
+        List<MarketDto> open = (event.markets() == null ? List.<MarketDto>of() : event.markets()).stream()
+                .filter(m -> !Boolean.TRUE.equals(m.closed()) && m.conditionId() != null)
+                .toList();
+        boolean dateLadder = open.stream().map(MarketDto::endDate).filter(java.util.Objects::nonNull)
+                .distinct().count() > 1;
+        java.util.Comparator<MarketDto> order = dateLadder
+                ? java.util.Comparator.comparing(MarketDto::endDate,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                : java.util.Comparator.comparing(MarketService::yesPrice).reversed();
+        return new EventDto(event.id(), event.slug(), event.title(), open.stream().sorted(order).toList());
+    }
+
+    private static double yesPrice(MarketDto m) {
+        try {
+            return m.outcomePrices() == null || m.outcomePrices().isEmpty()
+                    ? 0 : Double.parseDouble(m.outcomePrices().get(0));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private Mono<String> resolveConditionId(String marketKey) {

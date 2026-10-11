@@ -22,7 +22,7 @@ class TradingServiceOrderRulesTest {
         return new MarketDto("0", "0xcid", "Q?", null, null, null, null, null, null, null, null,
                 true, false, true, false, null, null, null, List.of("Yes", "No"), List.of("1", "2"),
                 List.of("0.5", "0.5"), true,
-                tick == null ? null : new BigDecimal(tick), minSize == null ? null : new BigDecimal(minSize));
+                tick == null ? null : new BigDecimal(tick), minSize == null ? null : new BigDecimal(minSize), null);
     }
 
     @Test

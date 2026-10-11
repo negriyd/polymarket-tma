@@ -10,6 +10,8 @@ import { isPriceChangeMessage } from '@/lib/ws/livePayload';
 import { isWalletConfigured } from '@/features/wallet/useWallet';
 import { MarketTradeSheet } from '@/features/trading/MarketTradeSheet';
 import { ClobTradeSheet } from '@/features/trading/ClobTradeSheet';
+import { EventOptions } from '@/features/markets/EventOptions';
+import type { Market } from '@/lib/api/types';
 import { outcomeText, Trans, useLocale, useT } from '@/lib/i18n';
 
 export function MarketDetailPage() {
@@ -20,13 +22,21 @@ export function MarketDetailPage() {
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [commentsEnabled, setCommentsEnabled] = useState(false);
   const [livePayload, setLivePayload] = useState<unknown>(null);
-  const [tradeOutcome, setTradeOutcome] = useState<'yes' | 'no' | null>(null);
+  const [trade, setTrade] = useState<{ market: Market; outcome: 'yes' | 'no' } | null>(null);
   const [privyTradeHint, setPrivyTradeHint] = useState(false);
 
   const market = useQuery({
     queryKey: ['market', marketId],
     queryFn: () => api.getMarket(marketId),
     enabled: !!marketId,
+  });
+
+  const event = useQuery({
+    queryKey: ['market-event', marketId],
+    queryFn: () => api.getMarketEvent(marketId),
+    enabled: !!marketId,
+    staleTime: 30_000,
+    retry: false,
   });
 
   const comments = useQuery({
@@ -103,15 +113,14 @@ export function MarketDetailPage() {
   const canTradeYes = betsCfg.data?.enabled === true || !!yesTok;
   const canTradeNo = betsCfg.data?.enabled === true || !!noTok;
 
-  const openTrade = (side: 'yes' | 'no') => {
+  const openTrade = (side: 'yes' | 'no', target: Market = m) => {
     hapticImpact('light');
     if (!isWalletConfigured()) {
       setPrivyTradeHint(true);
       return;
     }
-    const ok = side === 'yes' ? canTradeYes : canTradeNo;
-    if (!ok) return;
-    setTradeOutcome(side);
+    if (target === m && !(side === 'yes' ? canTradeYes : canTradeNo)) return;
+    setTrade({ market: target, outcome: side });
   };
 
   const outcomeLabel = (assetId: string) => {
@@ -175,6 +184,14 @@ export function MarketDetailPage() {
         </div>
       )}
 
+      {event.data && event.data.markets.length > 1 && (
+        <EventOptions
+          event={event.data}
+          currentConditionId={m.conditionId}
+          onTrade={(target, side) => openTrade(side, target)}
+        />
+      )}
+
       <section className="grid grid-cols-2 gap-2">
         <PriceTile
           label={t('common.yes')}
@@ -217,20 +234,20 @@ export function MarketDetailPage() {
         </section>
       )}
 
-      {isWalletConfigured() && tradeOutcome != null &&
+      {isWalletConfigured() && trade != null &&
         (betsCfg.data?.enabled ? (
           <MarketTradeSheet
-            market={m}
-            outcome={tradeOutcome}
+            market={trade.market}
+            outcome={trade.outcome}
             open
-            onClose={() => setTradeOutcome(null)}
+            onClose={() => setTrade(null)}
           />
         ) : (
           <ClobTradeSheet
-            market={m}
-            outcome={tradeOutcome}
+            market={trade.market}
+            outcome={trade.outcome}
             open
-            onClose={() => setTradeOutcome(null)}
+            onClose={() => setTrade(null)}
           />
         ))}
 
