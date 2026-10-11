@@ -78,27 +78,47 @@
 4. Рассылка по шаблонам ниже; ответы и результаты — в таблицу (канал, язык, площадка, метка, статус, регистрации, объём).
 5. Через месяц — отчёт: какие площадки и темы приводят ставящих пользователей; дальше масштабировать удачное.
 
+## Ставки и прогнозы без денег
+
+В приложении два способа участвовать в рынке:
+
+1. **Реальные ставки на Polymarket** — прямо из Telegram: пользователь подключает кошелёк, пополняет его и покупает акции «Да» или «Нет». До итога позицию можно продать (кнопка «Продать» в позиции на вкладке «Кошелёк», без комиссии платформы); после итога выигрыш забирается кнопкой «Забрать».
+2. **Прогнозы без денег** — чтобы проверить свою интуицию без риска: кнопки «Прогноз: Да / Нет» на странице рынка, без кошелька и пополнения. Когда рынок закрывается, прогноз отмечается как сбывшийся или нет, а бот присылает итог в Telegram.
+
+**Показатель точности считается только по прогнозам без денег.** Реальные ставки на него не влияют: у них свой счётчик выигранных и проигранных ставок на вкладке «Кошелёк». Проданная до итога ставка не считается ни выигранной, ни проигранной. Именно прогнозы без денег формируют:
+- точность прогнозов пользователя («Мои результаты» на вкладке «Кошелёк»);
+- **публичную точность автора** на значке, в карточках «Поделиться» и на картинках рынков — по прогнозам без денег самого партнёра, видна после 5 прогнозов с итогом;
+- рейтинг «Прогнозист недели» — по прогнозам без денег аудитории партнёра.
+
+Поэтому партнёру стоит регулярно делать прогнозы без денег на рынках своей темы: так растёт и становится публичной его точность.
+
 ## Шаблоны первого сообщения
+
+Ссылка на приложение: https://t.me/Polymarket_trader_nds_bot. После подключения партнёра — его ссылка с меткой из кабинета партнёра.
 
 ### RU
 
-> Здравствуйте! Я делаю Telegram-приложение для Polymarket — рынка прогнозов, где цена = вероятность события. Подписчики вашего канала могут прямо в Telegram смотреть вероятности по [политике/спорту/крипте], делать прогнозы без денег и ставки.
+> Здравствуйте! Я делаю Telegram-приложение для Polymarket — рынка прогнозов, где цена = вероятность события: https://t.me/Polymarket_trader_nds_bot
 >
-> Предлагаю партнёрство: **50% нашей комиссии со всех ставок пользователей, пришедших по вашей ссылке, в течение [срок]**. Выплата — в каждой сделке, сразу на ваш кошелёк, без порога вывода. Статистика по вашим ссылкам — в реальном времени.
+> Ваши подписчики могут прямо в Telegram смотреть вероятности по [политике/спорту/крипте] и делать реальные ставки на Polymarket. А чтобы проверить свою интуицию без риска, можно делать прогнозы и без денег — по ним считается точность прогнозов, которая показывается на карточках.
 >
-> Для контента: карточки рынков с графиком, вставка рынка в обсуждение через `@бот`, рейтинг «Прогнозист недели» среди ваших подписчиков и ваша публичная точность прогнозов.
+> Предлагаю партнёрство: **50% нашей комиссии со всех ставок пользователей, пришедших по вашей ссылке, в течение 12 месяцев** с регистрации каждого. Выплата — в каждой сделке, сразу на ваш кошелёк, без порога вывода. Статистика по вашим ссылкам — в реальном времени.
 >
-> Если интересно — пришлю ссылку и покажу, как это выглядит.
+> Для контента: картинки рынков с графиком для постов и сторис, вставка рынка в обсуждение через `@Polymarket_trader_nds_bot`, рейтинг «Прогнозист недели» среди ваших подписчиков и ваша публичная точность прогнозов (по вашим прогнозам без денег).
+>
+> Откройте приложение по ссылке выше — если интересно, подключу вас как партнёра и пришлю вашу персональную ссылку.
 
 ### EN
 
-> Hi! I'm building a Telegram app for Polymarket — the prediction market where price = probability. Your audience can check live odds on [politics/sports/crypto], make free predictions and place bets right inside Telegram.
+> Hi! I'm building a Telegram app for Polymarket — the prediction market where price = probability: https://t.me/Polymarket_trader_nds_bot
 >
-> Partnership offer: **50% of our fee on every bet placed by users who come through your link, for [term]**. Paid on every trade, instantly, to your wallet — no payout threshold. Real-time stats for your links.
+> Your audience can check live odds on [politics/sports/crypto] and place real bets on Polymarket right inside Telegram. To test their intuition without risk, they can also make free predictions — these build the prediction accuracy shown on the cards.
 >
-> Content tools: market cards with charts, `@bot` inline cards for any discussion, a weekly "Top forecaster" leaderboard among your followers, and your own public prediction accuracy.
+> Partnership offer: **50% of our fee on every bet placed by users who come through your link, for 12 months** from each user's sign-up. Paid on every trade, instantly, to your wallet — no payout threshold. Real-time stats for your links.
 >
-> Interested? I'll send a link and a quick walkthrough.
+> Content tools: market pictures with charts for posts and stories, `@Polymarket_trader_nds_bot` inline cards for any discussion, a weekly "Top forecaster" leaderboard among your followers, and your own public prediction accuracy (based on your free predictions).
+>
+> Open the app via the link above — if you're interested, I'll set you up as a partner and send your personal link.
 
 ## Ограничения
 

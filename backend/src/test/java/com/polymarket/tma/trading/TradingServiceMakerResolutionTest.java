@@ -149,6 +149,21 @@ class TradingServiceMakerResolutionTest {
     }
 
     @Test
+    void sellingAPositionCarriesNoPlatformFee() {
+        when(depositWallets.depositWalletOf(WALLET)).thenReturn("0x0000000000000000000000000000000000000dec");
+        var buy = req(OrderDtos.SignatureType.POLY_1271, null);
+        var sell = new OrderDtos.PrepareOrderRequest(buy.conditionId(), buy.tokenId(), OrderDtos.Side.SELL,
+                buy.price(), buy.size(), buy.orderType(), buy.signatureType(), buy.expiration(), buy.makerAddress());
+
+        var resp = service.prepare(1L, sell);
+
+        assertThat(resp.feeBatch()).isNull();
+        assertThat(resp.feeAmountUsdc()).isNull();
+        verify(fees, never()).quote(any());
+        verify(depositWallets, never()).prepareCollateralTransfers(any(Long.class), any(), any());
+    }
+
+    @Test
     void invitedUsersFeeIsSplitWithTheReferrerInOneBatch() {
         String depositWallet = "0x0000000000000000000000000000000000000dec";
         String platform = "0x5757DA608Cb6Feaa78dB6388506894F59621eB77";

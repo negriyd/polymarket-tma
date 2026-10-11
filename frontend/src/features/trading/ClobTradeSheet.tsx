@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useSignTypedData, useWallets, type SignTypedDataParams } from '@privy-io/react-auth';
-import { AxiosError } from 'axios';
 import { formatUnits } from 'viem';
 import { api } from '@/lib/api/endpoints';
 import type { Market } from '@/lib/api/types';
@@ -10,7 +9,7 @@ import { formatError as formatErr } from '@/lib/errors';
 import { Trans, useT, type MessageKey } from '@/lib/i18n';
 import { RiskNote } from '@/components/RiskNote';
 import { useWallet } from '@/features/wallet/useWallet';
-import { signAndRelayBatch } from '@/features/wallet/relayerTx';
+import { placeClobOrder } from './placeOrder';
 import { hapticImpact } from '@/lib/telegram/webApp';
 import { ShareButton } from '@/features/share/ShareButton';
 import { markFirstBetDone } from '@/features/onboarding/firstBet';
@@ -140,60 +139,28 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
       if (!w.address) throw new Error(t('common.walletNotConnected'));
       if (shares == null || shares <= 0) throw new Error(t('trade.invalid'));
 
-      await api.setWalletAddress(w.address);
-      const prep = await api.prepareOrder({
+      const address = w.address;
+      const sign = async (td: unknown) =>
+        (await signTypedData(td as SignTypedDataParams, { address })).signature;
+      return placeClobOrder({
+        address,
         conditionId: cid,
         tokenId,
         side: 'BUY',
         price: priceNum,
         size: shares,
-        signatureType: 'POLY_1271',
-      });
-
-      if (activeWallet && 'switchChain' in activeWallet && walletChainId !== 137) {
-        try {
-          await (activeWallet as unknown as { switchChain: (id: number) => Promise<void> }).switchChain(137);
-        } catch (err) {
-          console.warn('Privy wallet.switchChain(137) failed:', err);
-        }
-      }
-      // typedData is the ERC-7739 TypedDataSign wrapper; the backend packs the final signature.
-      const { signature } = await signTypedData(prep.typedData as SignTypedDataParams, {
-        address: w.address,
-      });
-
-      // Submit FIRST, then charge the platform fee, so a rejected order never costs a fee.
-      let submitted;
-      try {
-        submitted = await api.submitOrder({
-          orderHash: prep.orderHash,
-          signature,
-          idempotency_key: crypto.randomUUID(),
-        });
-      } catch (e) {
-        if (e instanceof AxiosError && (e.response?.status === 401 || e.response?.status === 403)) {
-          const data = e.response?.data as { code?: string } | undefined;
-          if (data?.code !== 'CLOB_GEOBLOCKED') {
-            // L2 credentials missing/expired: revoke so the Wallet tab prompts to reconnect.
-            await api.clobAuthRevoke().catch(() => undefined);
+        sign,
+        ensurePolygon: async () => {
+          if (activeWallet && 'switchChain' in activeWallet && walletChainId !== 137) {
+            try {
+              await (activeWallet as unknown as { switchChain: (id: number) => Promise<void> }).switchChain(137);
+            } catch (err) {
+              console.warn('Privy wallet.switchChain(137) failed:', err);
+            }
           }
-        }
-        throw e;
-      }
-
-      // POLY_1271 fee: pUSD transfer from the deposit wallet, relayed gaslessly. Best effort —
-      // the order already stands, so a failure here must not mask the success.
-      if (prep.feeBatch) {
-        try {
-          await signAndRelayBatch(prep.feeBatch, async (td) =>
-            (await signTypedData(td as SignTypedDataParams, { address: w.address! })).signature,
-          );
-        } catch (err) {
-          console.error('Platform fee batch failed (order already submitted):', err);
-          setError(t('trade.feeFailed', { error: formatErr(err) }));
-        }
-      }
-      return submitted;
+        },
+        onFeeError: (err) => setError(t('trade.feeFailed', { error: formatErr(err) })),
+      });
     },
     onSuccess: (sub) => {
       markFirstBetDone();

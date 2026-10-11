@@ -8,6 +8,7 @@ import { formatError as formatErr } from '@/lib/errors';
 import { outcomeText, useLocale, useT, type Locale, type TFunction } from '@/lib/i18n';
 import { hapticImpact } from '@/lib/telegram/webApp';
 import { signAndRelayBatch, waitForRelayerTx } from '@/features/wallet/relayerTx';
+import { SellSheet } from './SellSheet';
 
 interface Props {
   p: Position;
@@ -70,6 +71,9 @@ export function PositionRow({ p, walletAddress }: Props) {
   const { signTypedData } = useSignTypedData();
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [selling, setSelling] = useState(false);
+  // Still trading: not settled and the price is not pinned at 0 / 1.
+  const canSell = !!walletAddress && !p.redeemable && p.size > 0 && p.curPrice > 0 && p.curPrice < 1;
 
   const claim = useMutation({
     mutationFn: async () => {
@@ -169,6 +173,21 @@ export function PositionRow({ p, walletAddress }: Props) {
           </button>
         </div>
       )}
+      {canSell && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              hapticImpact('light');
+              setSelling(true);
+            }}
+            className="rounded-md bg-tg-bg px-3 py-1 text-xs font-semibold text-rose-500"
+          >
+            {t('sell.button')}
+          </button>
+        </div>
+      )}
+      {selling && walletAddress && <SellSheet p={p} walletAddress={walletAddress} onClose={() => setSelling(false)} />}
       {txHash && (
         <p className="mt-1 break-all text-[10px] text-emerald-500">{t('pos.claimTx', { hash: txHash })}</p>
       )}

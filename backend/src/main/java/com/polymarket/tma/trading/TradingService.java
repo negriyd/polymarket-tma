@@ -91,7 +91,8 @@ public class TradingService {
                 userId, req.conditionId(), negRisk,
                 domain == null ? "?" : domain.get("verifyingContract"));
         pending.put(userId, built);
-        FeeQuote fee = fees.quote(req);
+        // The platform fee is charged on bets (buys) only; selling a position before resolution is free.
+        FeeQuote fee = req.side() == OrderDtos.Side.SELL ? null : fees.quote(req);
         if (fee != null && maker.equalsIgnoreCase(fee.recipient())) {
             // The fee recipient trading from its own wallet would only pay itself: skip the extra signature.
             fee = null;
