@@ -56,7 +56,7 @@ public class GammaClient {
             return searchMarkets(limit, offset, order, ascending, search);
         }
         return client.get()
-                .uri(uri -> buildListUri(uri, limit, offset, order, ascending, tag, null))
+                .uri(uri -> buildListUri(uri, limit, offset, order, ascending, tag))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::mapError)
                 .bodyToMono(new ParameterizedTypeReference<List<MarketDto>>() {})
@@ -154,16 +154,28 @@ public class GammaClient {
     }
 
     /**
-     * List markets filtered by Gamma {@code slug} (used when resolving a condition id via CLOB metadata).
+     * The market with this condition id, open or closed. Gamma's {@code /markets} leaves closed
+     * markets out unless asked for them, so a miss is retried with {@code closed=true}.
      */
-    public Mono<List<MarketDto>> listMarketsBySlug(int limit, int offset, String order, boolean ascending, String slug) {
+    public Mono<MarketDto> findByConditionId(String conditionId) {
+        return byConditionId(conditionId, false).switchIfEmpty(Mono.defer(() -> byConditionId(conditionId, true)));
+    }
+
+    private Mono<MarketDto> byConditionId(String conditionId, boolean closed) {
         return client.get()
-                .uri(uri -> buildListUri(uri, limit, offset, order, ascending, null, slug))
+                .uri(uri -> {
+                    uri.path("/markets").queryParam("condition_ids", conditionId).queryParam("limit", 1);
+                    if (closed) {
+                        uri.queryParam("closed", true);
+                    }
+                    return uri.build();
+                })
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::mapError)
                 .bodyToMono(new ParameterizedTypeReference<List<MarketDto>>() {})
-                .retryWhen(retrySpec("listMarketsBySlug"))
-                .doOnError(e -> log.warn("Gamma listMarketsBySlug failed: {}", e.toString()));
+                .flatMap(list -> list.isEmpty() ? Mono.empty() : Mono.just(list.get(0)))
+                .retryWhen(retrySpec("findByConditionId"))
+                .doOnError(e -> log.warn("Gamma findByConditionId({}) failed: {}", conditionId, e.toString()));
     }
 
     /** Events of a recurring series ("…continues through…?" each month); without their markets. */
@@ -336,7 +348,7 @@ public class GammaClient {
     }
 
     private static java.net.URI buildListUri(UriBuilder uri, int limit, int offset, String order,
-                                             boolean ascending, String tag, String slug) {
+                                             boolean ascending, String tag) {
         uri.path("/markets")
                 .queryParam("limit", limit)
                 .queryParam("offset", offset)
@@ -346,9 +358,6 @@ public class GammaClient {
                 .queryParam("ascending", ascending);
         if (tag != null && !tag.isBlank()) {
             uri.queryParam("tag_id", tag);
-        }
-        if (slug != null && !slug.isBlank()) {
-            uri.queryParam("slug", slug);
         }
         return uri.build();
     }

@@ -116,6 +116,7 @@ export function EventOptions({ event, currentConditionId, onTrade }: Props) {
           const { yes, no } = yesNoPrices(m);
           const current = m.conditionId.toLowerCase() === currentConditionId.toLowerCase();
           const pct = yes == null ? null : Math.round(yes * 100);
+          const canTrade = m.acceptingOrders !== false;
           return (
             <li
               key={m.conditionId}
@@ -141,14 +142,16 @@ export function EventOptions({ event, currentConditionId, onTrade }: Props) {
               <button
                 type="button"
                 onClick={() => onTrade(m, 'yes')}
-                className="shrink-0 rounded-lg bg-emerald-500/15 px-2 py-1.5 text-xs font-semibold tabular-nums text-emerald-500"
+                disabled={!canTrade}
+                className="shrink-0 disabled:opacity-40 rounded-lg bg-emerald-500/15 px-2 py-1.5 text-xs font-semibold tabular-nums text-emerald-500"
               >
                 {t('common.yes')} {cents(yes)}
               </button>
               <button
                 type="button"
                 onClick={() => onTrade(m, 'no')}
-                className="shrink-0 rounded-lg bg-rose-500/15 px-2 py-1.5 text-xs font-semibold tabular-nums text-rose-500"
+                disabled={!canTrade}
+                className="shrink-0 disabled:opacity-40 rounded-lg bg-rose-500/15 px-2 py-1.5 text-xs font-semibold tabular-nums text-rose-500"
               >
                 {t('common.no')} {cents(no)}
               </button>

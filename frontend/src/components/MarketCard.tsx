@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import type { Market } from '@/lib/api/types';
 import { hapticImpact } from '@/lib/telegram/webApp';
-import { useT } from '@/lib/i18n';
+import { outcomeText, useT } from '@/lib/i18n';
+import { marketState } from '@/lib/marketState';
 
 interface Props {
   market: Market;
@@ -31,6 +32,7 @@ function pickYesPrice(market: Market): number | null {
 
 export function MarketCard({ market, compact }: Props) {
   const t = useT();
+  const state = marketState(market);
   const yesPrice = pickYesPrice(market);
   const yesPct = yesPrice == null ? null : Math.round(yesPrice * 100);
 
@@ -60,7 +62,14 @@ export function MarketCard({ market, compact }: Props) {
             {t('card.volLiq', { vol: formatVolume(market.volume24h ?? market.volume), liq: formatVolume(market.liquidity) })}
           </p>
         </div>
-        {yesPct != null && (
+        {(state.kind === 'resolved' || state.kind === 'closed') && (
+          <div className="shrink-0 rounded-md bg-tg-bg px-2 py-1 text-[11px] font-semibold text-tg-hint">
+            {state.kind === 'resolved'
+              ? t('card.resolved', { outcome: outcomeText(state.winner, t) })
+              : t('card.closed')}
+          </div>
+        )}
+        {yesPct != null && state.kind !== 'resolved' && state.kind !== 'closed' && (
           <div className="shrink-0 text-right tabular-nums">
             <div
               className={clsx(

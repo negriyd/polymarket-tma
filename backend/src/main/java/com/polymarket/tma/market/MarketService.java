@@ -97,15 +97,10 @@ public class MarketService {
         return objectMapper.convertValue(raw, MarketDto.class);
     }
 
+    /** Gamma by condition id, closed markets included (favorites and positions outlive their market). */
     private Mono<MarketDto> resolveGammaByConditionId(String conditionId) {
-        return clob.getMarketSlugByConditionId(conditionId)
-                .flatMap(slug -> gamma.listMarketsBySlug(1, 0, "volume24hr", false, slug))
-                .flatMap(list -> list.stream()
-                        .filter(m -> conditionId.equalsIgnoreCase(m.conditionId()))
-                        .findFirst()
-                        .map(Mono::just)
-                        .orElseGet(() ->
-                                Mono.error(ApiException.notFound("MARKET_NOT_FOUND", "Market not found: " + conditionId))));
+        return gamma.findByConditionId(conditionId)
+                .switchIfEmpty(Mono.error(ApiException.notFound("MARKET_NOT_FOUND", "Market not found: " + conditionId)));
     }
 
     private static boolean isHexConditionId(String marketKey) {

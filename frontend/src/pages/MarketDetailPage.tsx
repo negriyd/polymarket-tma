@@ -15,6 +15,7 @@ import { PriceChart } from '@/features/markets/PriceChart';
 import type { Market } from '@/lib/api/types';
 import { outcomeText, Trans, useLocale, useT } from '@/lib/i18n';
 import { ShareButton } from '@/features/share/ShareButton';
+import { isTradable, marketState } from '@/lib/marketState';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
@@ -113,8 +114,11 @@ export function MarketDetailPage() {
   const tokens = m.clobTokenIds ?? [];
   const yesTok = yesIdx >= 0 ? tokens[yesIdx] : tokens[0];
   const noTok = noIdx >= 0 ? tokens[noIdx] : tokens[1];
-  const canTradeYes = betsCfg.data?.enabled === true || !!yesTok;
-  const canTradeNo = betsCfg.data?.enabled === true || !!noTok;
+  const state = marketState(m);
+  const tradable = isTradable(state);
+  const canTradeYes = tradable && (betsCfg.data?.enabled === true || !!yesTok);
+  const canTradeNo = tradable && (betsCfg.data?.enabled === true || !!noTok);
+  const winnerIdx = state.kind === 'resolved' ? state.winnerIndex : -1;
 
   const openTrade = (side: 'yes' | 'no', target: Market = m) => {
     hapticImpact('light');
@@ -165,6 +169,20 @@ export function MarketDetailPage() {
         </div>
       </header>
 
+      {state.kind !== 'open' && (
+        <p
+          className={
+            state.kind === 'openPastEnd'
+              ? 'rounded-xl bg-tg-secondary px-3 py-2 text-xs text-tg-hint'
+              : 'rounded-xl bg-amber-500/15 px-3 py-2 text-sm font-medium text-tg-text'
+          }
+        >
+          {state.kind === 'resolved'
+            ? t('market.state.resolved', { outcome: outcomeText(state.winner, t) })
+            : t(`market.state.${state.kind}`)}
+        </p>
+      )}
+
       {friendPick && (
         <p className="rounded-xl bg-tg-button/15 px-3 py-2 text-sm text-tg-text">
           {t('share.friendPick', { outcome: t(friendPick === 'yes' ? 'common.yes' : 'common.no') })}
@@ -210,6 +228,7 @@ export function MarketDetailPage() {
           label={t('common.yes')}
           price={yesPrice}
           accent="emerald"
+          won={winnerIdx >= 0 ? winnerIdx === (yesIdx >= 0 ? yesIdx : 0) : undefined}
           disabled={!canTradeYes}
           onPress={() => openTrade('yes')}
           actionLabel={t(betsCfg.data?.enabled ? 'market.bet' : 'market.buy', { outcome: t('common.yes') })}
@@ -218,6 +237,7 @@ export function MarketDetailPage() {
           label={t('common.no')}
           price={noPrice}
           accent="rose"
+          won={winnerIdx >= 0 ? winnerIdx === (noIdx >= 0 ? noIdx : 1) : undefined}
           disabled={!canTradeNo}
           onPress={() => openTrade('no')}
           actionLabel={t(betsCfg.data?.enabled ? 'market.bet' : 'market.buy', { outcome: t('common.no') })}
@@ -456,6 +476,7 @@ function PriceTile({
   onPress,
   disabled,
   actionLabel,
+  won,
 }: {
   label: string;
   price?: number;
@@ -463,13 +484,15 @@ function PriceTile({
   onPress?: () => void;
   disabled?: boolean;
   actionLabel?: string;
+  /** Resolved market: whether this outcome won (shown instead of the price). */
+  won?: boolean;
 }) {
   const t = useT();
   const pct = price == null ? null : Math.round(price * 100);
   const accentClass = accent === 'emerald' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500';
   const className = `rounded-xl px-3 py-3 text-center ${accentClass} ${
     onPress && !disabled ? 'cursor-pointer transition active:scale-[0.98]' : ''
-  } ${disabled ? 'opacity-50' : ''}`;
+  } ${disabled && won !== true ? 'opacity-50' : ''} ${won === true ? 'ring-2 ring-current' : ''}`;
   const cta = actionLabel ?? t('market.buy', { outcome: label });
   return (
     <button
@@ -480,7 +503,12 @@ function PriceTile({
       aria-label={disabled || !onPress ? t('market.priceLabel', { outcome: label }) : cta}
     >
       <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{pct == null ? '—' : `${pct}%`}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">
+        {won === true ? '✓' : won === false ? '✗' : pct == null ? '—' : `${pct}%`}
+      </p>
+      {won === true && (
+        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">{t('market.winner')}</p>
+      )}
       {onPress && !disabled && (
         <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">{t('market.tapTo', { action: cta.toLowerCase() })}</p>
       )}
