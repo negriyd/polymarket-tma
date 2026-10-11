@@ -59,6 +59,10 @@ public class AppUser {
     @Column(name = "referred_at")
     private Instant referredAt;
 
+    /** The bot may message this user (Telegram's allows_write_to_pm / requestWriteAccess); off after a 403. */
+    @Column(name = "allows_messages", nullable = false)
+    private boolean allowsMessages;
+
     /** Channel tag of the link the user signed up through ({@code startapp=s<tag>}). */
     @Column(name = "signup_source", length = 32)
     private String signupSource;

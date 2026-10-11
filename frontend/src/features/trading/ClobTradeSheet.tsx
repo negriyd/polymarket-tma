@@ -13,6 +13,7 @@ import { signAndRelayBatch } from '@/features/wallet/relayerTx';
 import { hapticImpact } from '@/lib/telegram/webApp';
 import { ShareButton } from '@/features/share/ShareButton';
 import { markFirstBetDone } from '@/features/onboarding/firstBet';
+import { NotifyPrompt } from '@/features/predictions/NotifyPrompt';
 
 type OutcomeSide = 'yes' | 'no';
 
@@ -333,6 +334,7 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
           {error && <p className="text-sm text-rose-500">{error}</p>}
           {success && <p className="text-sm text-emerald-500">{success}</p>}
           {success && <ShareButton marketKey={market.id ?? market.conditionId} side={outcome} />}
+          {success && <NotifyPrompt />}
 
           <p className="text-[10px] leading-snug text-tg-hint">
             {t('trade.note')}

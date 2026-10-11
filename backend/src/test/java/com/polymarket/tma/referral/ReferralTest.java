@@ -22,6 +22,8 @@ class ReferralTest {
         assertThat(StartParam.parse("stiktok-may")).isEqualTo(new StartParam(null, null, null, "tiktok-may"));
         assertThat(StartParam.parse("m_42_n")).isEqualTo(new StartParam("42", "no", null, null));
         assertThat(StartParam.parse("m_abc")).isEqualTo(StartParam.NONE);
+        assertThat(StartParam.parse("w_snotify")).as("wallet link from a result message")
+                .isEqualTo(new StartParam(null, null, null, "notify"));
         assertThat(StartParam.parse(null)).isEqualTo(StartParam.NONE);
     }
 

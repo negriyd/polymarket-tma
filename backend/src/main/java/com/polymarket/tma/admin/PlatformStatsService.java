@@ -41,10 +41,16 @@ public class PlatformStatsService {
     public record Stats(long users, long usersLast7d, long usersWithWallet, long referredUsers,
                         long bets, String volumeUsdc, String avgBetUsdc,
                         long feePayments, String feesUsdc, String referralUsdc,
-                        Funnel funnel, List<SourceRow> sources) {}
+                        Funnel funnel, List<SourceRow> sources, Predictions predictions) {}
+
+    /**
+     * @param accuracyPct correct / resolved, 0 when nothing resolved yet
+     * @param messagesSent result messages delivered (a digest counts once)
+     */
+    public record Predictions(long users, long total, long resolved, long accuracyPct, long messagesSent) {}
 
     /** Users at each onboarding step (cumulative: each step is a subset of the previous one). */
-    public record Funnel(long opened, long wallet, long tried, long bet) {}
+    public record Funnel(long opened, long predicted, long wallet, long tried, long bet) {}
 
     /**
      * One channel tag ({@code startapp=s<tag>}), or "direct" for users without one.
@@ -54,6 +60,7 @@ public class PlatformStatsService {
     public record SourceRow(String source, long launches, long users, long wallet, long bet) {}
 
     private static final String FUNNEL_SQL = "SELECT COUNT(*) AS opened, "
+            + "COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM prediction p WHERE p.user_id = u.id)) AS predicted, "
             + "COUNT(*) FILTER (WHERE u.wallet_address IS NOT NULL) AS wallet, "
             + "COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM order_audit o WHERE o.user_id = u.id)) AS tried, "
             + "COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM order_audit o WHERE o.user_id = u.id AND o."
@@ -113,8 +120,21 @@ public class PlatformStatsService {
                 num(u.get("total")), num(u.get("last7")), num(u.get("wallet")), num(u.get("referred")),
                 num(o.get("bets")), usd(volume), usd(avg),
                 num(f.get("n")), usd(micro(f.get("platform"))), usd(micro(f.get("referrer"))),
-                new Funnel(num(fn.get("opened")), num(fn.get("wallet")), num(fn.get("tried")), num(fn.get("bet"))),
-                sources);
+                new Funnel(num(fn.get("opened")), num(fn.get("predicted")), num(fn.get("wallet")),
+                        num(fn.get("tried")), num(fn.get("bet"))),
+                sources, predictions());
+    }
+
+    private Predictions predictions() {
+        Map<String, Object> p = jdbc.queryForMap("SELECT COUNT(DISTINCT user_id) AS users, COUNT(*) AS total, "
+                + "COUNT(*) FILTER (WHERE resolved_at IS NOT NULL) AS resolved, "
+                + "COUNT(*) FILTER (WHERE correct) AS correct FROM prediction");
+        Long sent = jdbc.queryForObject("SELECT COUNT(*) FILTER (WHERE status = 'SENT') "
+                + "+ COUNT(DISTINCT (user_id, sent_at)) FILTER (WHERE status = 'DIGEST') FROM result_notification",
+                Long.class);
+        long resolved = num(p.get("resolved"));
+        return new Predictions(num(p.get("users")), num(p.get("total")), resolved,
+                resolved == 0 ? 0 : Math.round(100.0 * num(p.get("correct")) / resolved), sent == null ? 0 : sent);
     }
 
     private static long num(Object v) {

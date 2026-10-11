@@ -208,9 +208,24 @@ public class GammaClient {
 
     /** Markets by condition id with titles in {@code locale} (Gamma falls back to English per market). */
     public Mono<List<MarketDto>> marketsByConditionIds(List<String> conditionIds, String locale) {
+        return marketsByConditionIds(conditionIds, locale, false);
+    }
+
+    /**
+     * @param closed Gamma returns closed markets only when asked ({@code closed=true}), and then only
+     *               closed ones — callers that need both query twice
+     * @param locale titles' language; null = English
+     */
+    public Mono<List<MarketDto>> marketsByConditionIds(List<String> conditionIds, String locale, boolean closed) {
         return client.get()
                 .uri(uri -> {
-                    uri.path("/markets").queryParam("limit", conditionIds.size()).queryParam("locale", locale);
+                    uri.path("/markets").queryParam("limit", conditionIds.size());
+                    if (locale != null) {
+                        uri.queryParam("locale", locale);
+                    }
+                    if (closed) {
+                        uri.queryParam("closed", true);
+                    }
                     conditionIds.forEach(id -> uri.queryParam("condition_ids", id));
                     return uri.build();
                 })

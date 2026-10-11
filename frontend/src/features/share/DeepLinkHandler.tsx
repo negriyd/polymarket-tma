@@ -19,6 +19,8 @@ export function DeepLinkHandler() {
     }
     const link = parseStartParam(param);
     if (link) navigate(`/markets/${link.marketId}`, { state: { friendPick: link.friendPick } });
+    // `w` = open the Wallet tab (e.g. "Claim winnings" in a result message).
+    else if ((param ?? '').split('_').includes('w')) navigate('/wallet');
   }, [navigate]);
   return null;
 }

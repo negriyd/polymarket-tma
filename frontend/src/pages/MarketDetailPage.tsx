@@ -16,6 +16,7 @@ import type { Market } from '@/lib/api/types';
 import { outcomeText, Trans, useLocale, useT } from '@/lib/i18n';
 import { ShareButton } from '@/features/share/ShareButton';
 import { isTradable, marketState } from '@/lib/marketState';
+import { PredictionBlock } from '@/features/predictions/PredictionBlock';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
@@ -243,6 +244,8 @@ export function MarketDetailPage() {
           actionLabel={t(betsCfg.data?.enabled ? 'market.bet' : 'market.buy', { outcome: t('common.no') })}
         />
       </section>
+
+      <PredictionBlock market={m} />
 
       {betsCfg.data?.enabled && betPool.data && (
         <section className="rounded-xl bg-tg-secondary p-3">

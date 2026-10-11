@@ -61,6 +61,39 @@ public class TelegramBotClient {
                 .switchIfEmpty(Mono.error(ApiException.upstream("TELEGRAM_PREPARE", "No prepared message id")));
     }
 
+    /** The user blocked the bot or never allowed it to write: stop messaging them. */
+    public static final String FORBIDDEN = "TELEGRAM_FORBIDDEN";
+
+    /**
+     * HTML message with one URL button. Fails with {@link #FORBIDDEN} when Telegram answers 403.
+     */
+    public Mono<Void> sendMessage(long chatId, String html, String buttonText, String buttonUrl) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("chat_id", chatId);
+        body.put("text", html);
+        body.put("parse_mode", "HTML");
+        body.put("link_preview_options", Map.of("is_disabled", true));
+        if (buttonText != null && buttonUrl != null) {
+            body.put("reply_markup", Map.of("inline_keyboard",
+                    java.util.List.of(java.util.List.of(Map.of("text", buttonText, "url", buttonUrl)))));
+        }
+        return client.post().uri("/sendMessage").bodyValue(body)
+                .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class)
+                        .map(json -> Map.entry(resp.statusCode().value(), json)))
+                .timeout(TIMEOUT)
+                .flatMap(reply -> {
+                    JsonNode json = reply.getValue();
+                    if (json.path("ok").asBoolean(false)) {
+                        return Mono.<Void>empty();
+                    }
+                    int status = json.path("error_code").asInt(reply.getKey());
+                    String desc = json.path("description").asText("?");
+                    return Mono.<Void>error(status == 403
+                            ? ApiException.forbidden(FORBIDDEN, desc)
+                            : ApiException.upstream("TELEGRAM_SENDMESSAGE", "sendMessage failed: " + desc));
+                });
+    }
+
     /** Answers an inline query ({@code @bot text} in any chat) with market cards. */
     public Mono<Void> answerInlineQuery(String queryId, java.util.List<Map<String, Object>> results) {
         return call("answerInlineQuery", Map.of(

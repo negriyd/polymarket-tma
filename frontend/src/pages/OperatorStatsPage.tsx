@@ -59,6 +59,18 @@ export function OperatorStatsPage() {
               sub={t('op.refSub', { n: stats.data.referredUsers })}
             />
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Card
+              label={t('op.predictions')}
+              value={String(stats.data.predictions.total)}
+              sub={t('op.predictionsSub', { users: stats.data.predictions.users, resolved: stats.data.predictions.resolved })}
+            />
+            <Card
+              label={t('op.accuracy')}
+              value={`${stats.data.predictions.accuracyPct}%`}
+              sub={t('op.messagesSent', { n: stats.data.predictions.messagesSent })}
+            />
+          </div>
           <p className="text-[11px] leading-snug text-tg-hint">{t('op.note')}</p>
 
           <section className="space-y-2 rounded-xl bg-tg-secondary p-3">
@@ -66,6 +78,7 @@ export function OperatorStatsPage() {
             {(
               [
                 ['op.f.opened', stats.data.funnel.opened],
+                ['op.f.predicted', stats.data.funnel.predicted],
                 ['op.f.wallet', stats.data.funnel.wallet],
                 ['op.f.tried', stats.data.funnel.tried],
                 ['op.f.bet', stats.data.funnel.bet],

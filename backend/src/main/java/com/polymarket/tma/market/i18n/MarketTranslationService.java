@@ -86,8 +86,20 @@ public class MarketTranslationService {
         if (missing.isEmpty()) {
             return Mono.just(found);
         }
+        // Open markets first; whatever is still missing is looked up among closed ones.
         return Flux.fromIterable(partition(missing))
-                .flatMap(batch -> gamma.marketsByConditionIds(batch, locale))
+                .flatMap(batch -> gamma.marketsByConditionIds(batch, locale)
+                        .flatMap(open -> {
+                            java.util.Set<String> seen = new java.util.HashSet<>();
+                            open.forEach(m -> seen.add(m.conditionId() == null ? "" : m.conditionId().toLowerCase(Locale.ROOT)));
+                            List<String> rest = batch.stream().filter(id -> !seen.contains(id)).toList();
+                            return rest.isEmpty() ? Mono.just(open)
+                                    : gamma.marketsByConditionIds(rest, locale, true).map(closed -> {
+                                        List<MarketDto> all = new ArrayList<>(open);
+                                        all.addAll(closed);
+                                        return all;
+                                    });
+                        }))
                 .flatMapIterable(list -> list)
                 .collectList()
                 .timeout(LOOKUP_TIMEOUT)

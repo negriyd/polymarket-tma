@@ -57,6 +57,8 @@ class MarketTranslationServiceTest {
         // Gamma returns only 0xB; 0xC has no data and stays English.
         when(gamma.marketsByConditionIds(List.of("0xb", "0xc"), "ru"))
                 .thenReturn(Mono.just(List.of(market("0xB", "Случится ли B?"))));
+        // 0xC isn't open: looked up again among closed markets, where it isn't either.
+        when(gamma.marketsByConditionIds(List.of("0xc"), "ru", true)).thenReturn(Mono.just(List.of()));
 
         var out = service.translateMarkets(List.of(
                 market("0xA", "Will A happen?"), market("0xB", "Will B happen?"), market("0xC", "Will C happen?")),

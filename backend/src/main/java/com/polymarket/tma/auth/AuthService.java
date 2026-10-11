@@ -85,6 +85,11 @@ public class AuthService {
         user.setLanguageCode(tg.languageCode());
         user.setPremium(Boolean.TRUE.equals(tg.premium()));
         user.setPhotoUrl(tg.photoUrl());
+        // Only ever switched on here: the flag is missing from some launches, and a revoked
+        // permission shows up as a 403 when we message the user.
+        if (Boolean.TRUE.equals(tg.allowsWriteToPm())) {
+            user.setAllowsMessages(true);
+        }
         return userRepo.save(user);
     }
 

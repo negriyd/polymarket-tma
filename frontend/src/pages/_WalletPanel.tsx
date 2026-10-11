@@ -10,6 +10,7 @@ import type { Bet } from '@/lib/api/types';
 import { useLocale, useT } from '@/lib/i18n';
 import { ReferralSection } from '@/features/share/ReferralSection';
 import { Link } from 'react-router-dom';
+import { TrackRecord } from '@/features/predictions/TrackRecord';
 
 function statusColor(status: string): string {
   switch (status) {
@@ -215,6 +216,7 @@ export function WalletPanel() {
             <>
               <ClobAuthSection walletAddress={w.address} />
               <DepositWalletSection walletAddress={w.address} />
+              <TrackRecord />
               <ReferralSection />
 
               <section className="space-y-2">

@@ -12,6 +12,8 @@ import type {
   MarketShare,
   ReferralInfo,
   OperatorStats,
+  Prediction,
+  TrackRecord,
   MarketList,
   MarketComment,
   OrderSignatureType,
@@ -56,6 +58,14 @@ export const api = {
 
   getMarket: (marketKey: string) =>
     http.get<Market>(`/api/markets/${marketKey}`).then((r) => r.data),
+
+  predict: (body: { marketKey: string; side: 'yes' | 'no' }) =>
+    http.post<Prediction>('/api/predictions', body).then((r) => r.data),
+  listPredictions: (conditionId?: string) =>
+    http.get<Prediction[]>('/api/predictions', { params: conditionId ? { conditionId } : {} }).then((r) => r.data),
+  getTrackRecord: () => http.get<TrackRecord>('/api/me/track-record').then((r) => r.data),
+  setResultNotifications: (enabled: boolean) =>
+    http.post<TrackRecord>('/api/me/notifications', { enabled }).then((r) => r.data),
 
   getOperatorAccess: () => http.get<{ operator: boolean }>('/api/operator/access').then((r) => r.data),
   getOperatorStats: () => http.get<OperatorStats>('/api/operator/stats').then((r) => r.data),

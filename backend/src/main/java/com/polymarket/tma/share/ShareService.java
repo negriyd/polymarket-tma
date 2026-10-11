@@ -123,7 +123,7 @@ public class ShareService {
      * Escapes text for Telegram's HTML parse mode, which knows only {@code &lt; &gt; &amp; &quot;}
      * (and numeric references): named entities like {@code &middot;} would show up literally.
      */
-    static String escape(String s) {
+    public static String escape(String s) {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 

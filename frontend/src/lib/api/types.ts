@@ -60,6 +60,25 @@ export interface MarketEvent {
   seriesEvents?: SeriesEvent[] | null;
 }
 
+export interface Prediction {
+  conditionId: string;
+  marketId: string;
+  outcomeIndex: number;
+  outcomeLabel: string;
+  price?: string | number | null;
+  question: string;
+  createdAt: string;
+  resolvedAt?: string | null;
+  /** null while the market is open or awaiting its result. */
+  correct?: boolean | null;
+}
+
+export interface TrackRecord {
+  predictions: { correct: number; wrong: number; pending: number };
+  bets: { correct: number; wrong: number; pending: number };
+  allowsMessages: boolean;
+}
+
 export interface OperatorStats {
   users: number;
   usersLast7d: number;
@@ -71,7 +90,8 @@ export interface OperatorStats {
   feePayments: number;
   feesUsdc: string;
   referralUsdc: string;
-  funnel: { opened: number; wallet: number; tried: number; bet: number };
+  funnel: { opened: number; predicted: number; wallet: number; tried: number; bet: number };
+  predictions: { users: number; total: number; resolved: number; accuracyPct: number; messagesSent: number };
   /** Per channel tag (startapp=s<tag>); "direct" = no tag. launches = last 30 days. */
   sources: { source: string; launches: number; users: number; wallet: number; bet: number }[];
 }
