@@ -103,7 +103,64 @@ export interface ReferralInfo {
   /** Fee share paid to this user so far, pUSD. */
   earnedUsdc: string;
   sharePercent: number;
+  /** 0 when lifetime. */
   months: number;
+  lifetime: boolean;
+  /** An active partner: has a partner cabinet. */
+  partner: boolean;
+}
+
+/** Users one partner brought, per link tag (source null = link without a tag) or in total. */
+export interface PartnerFunnel {
+  source: string | null;
+  /** App opens through the partner's links, repeat opens included. */
+  launches: number;
+  users: number;
+  wallet: number;
+  bet: number;
+  volumeUsdc: string;
+  earnedUsdc: string;
+}
+
+export interface Partner {
+  userId: number;
+  telegramId: number;
+  username: string | null;
+  name: string;
+  /** Share of the platform fee, 5000 = 50%. */
+  shareBps: number;
+  /** null = lifetime. */
+  months: number | null;
+  active: boolean;
+  note: string | null;
+  since: string;
+  hasWallet: boolean;
+  code: string;
+  totals: PartnerFunnel;
+}
+
+export interface PartnerTermsInput {
+  shareBps: number;
+  months: number | null;
+  note?: string | null;
+}
+
+/** `link` is the invite link without a tag; append `_s<tag>` for a tagged one. */
+export interface PartnerView {
+  partner: Partner;
+  link: string;
+}
+
+export interface PartnerCabinet {
+  cabinet: {
+    shareBps: number;
+    months: number | null;
+    since: string;
+    code: string;
+    totals: PartnerFunnel;
+    sources: PartnerFunnel[];
+  };
+  link: string;
 }
 
 export interface MarketShare {

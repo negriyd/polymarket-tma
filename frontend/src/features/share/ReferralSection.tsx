@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api/endpoints';
 import { useT } from '@/lib/i18n';
 import { hapticImpact, tg } from '@/lib/telegram/webApp';
@@ -35,9 +36,20 @@ export function ReferralSection() {
       <div>
         <p className="text-xs uppercase tracking-wide text-tg-hint">{t('ref.title')}</p>
         <p className="mt-0.5 text-[11px] leading-snug text-tg-hint">
-          {t('ref.terms', { pct: r.sharePercent, months: r.months })}
+          {r.lifetime
+            ? t('ref.termsLifetime', { pct: r.sharePercent })
+            : t('ref.terms', { pct: r.sharePercent, months: r.months })}
         </p>
       </div>
+      {r.partner && (
+        <Link
+          to="/partner"
+          className="flex items-center justify-between rounded-lg bg-tg-button/15 px-3 py-2 text-sm font-semibold text-tg-text"
+        >
+          🤝 {t('pt.open')}
+          <span className="text-tg-hint">›</span>
+        </Link>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-tg-bg px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-tg-hint">{t('ref.invited')}</p>

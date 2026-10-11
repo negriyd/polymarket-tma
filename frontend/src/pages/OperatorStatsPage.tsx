@@ -35,6 +35,14 @@ export function OperatorStatsPage() {
       {stats.isLoading && <Spinner />}
       {stats.isError && <ErrorView message={formatError(stats.error)} onRetry={() => stats.refetch()} />}
 
+      <Link
+        to="/operator/partners"
+        className="flex items-center justify-between rounded-xl bg-tg-button/15 px-4 py-3 text-sm font-semibold text-tg-text"
+      >
+        🤝 {t('opp.title')}
+        <span className="text-tg-hint">›</span>
+      </Link>
+
       <ChecklistPreview />
 
       {stats.data && (

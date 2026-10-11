@@ -2,9 +2,11 @@ package com.polymarket.tma.referral;
 
 import com.polymarket.tma.auth.entity.AppUser;
 import com.polymarket.tma.auth.repo.AppUserRepository;
+import com.polymarket.tma.partner.PartnerRepository;
 import java.math.BigInteger;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,17 +28,22 @@ public class ReferralService {
     private final AppUserRepository users;
     private final JdbcTemplate jdbc;
     private final ReferralProperties props;
+    private final PartnerRepository partners;
 
-    public ReferralService(AppUserRepository users, JdbcTemplate jdbc, ReferralProperties props) {
+    public ReferralService(AppUserRepository users, JdbcTemplate jdbc, ReferralProperties props,
+                           PartnerRepository partners) {
         this.users = users;
         this.jdbc = jdbc;
         this.props = props;
+        this.partners = partners;
     }
 
     /** Fee split for one trade: who gets what of the platform fee. */
     public record Split(long referrerId, String referrerEoa, BigInteger referrerAmount) {}
 
-    public record Summary(String code, int invited, BigInteger earnedMicro, int sharePercent, long months) {}
+    /** @param months 0 with {@code lifetime} */
+    public record Summary(String code, int invited, BigInteger earnedMicro, int sharePercent, long months,
+                          boolean lifetime, boolean partner) {}
 
     /**
      * Records a Telegram launch and, for a brand-new user, who invited them and through which
@@ -83,23 +90,38 @@ public class ReferralService {
         return user.getRefCode();
     }
 
-    /** The referrer's cut of {@code feeMicro} if this user was invited within the program window. */
+    /**
+     * The referrer's cut of {@code feeMicro} if this user was invited within the program window.
+     * An active partner's individual share and term replace the default ones.
+     */
     public Optional<Split> split(long refereeId, BigInteger feeMicro) {
-        if (props.shareBps() <= 0 || feeMicro == null || feeMicro.signum() <= 0) {
+        if (feeMicro == null || feeMicro.signum() <= 0) {
             return Optional.empty();
         }
         AppUser referee = users.findById(refereeId).orElse(null);
-        if (referee == null || referee.getReferredBy() == null || referee.getReferredAt() == null
-                || referee.getReferredAt().plus(props.duration()).isBefore(Instant.now())) {
+        if (referee == null || referee.getReferredBy() == null || referee.getReferredAt() == null) {
             return Optional.empty();
         }
-        BigInteger cut = feeMicro.multiply(BigInteger.valueOf(props.shareBps())).divide(BigInteger.valueOf(10_000));
+        AppUser referrer = users.findById(referee.getReferredBy())
+                .filter(r -> r.getWalletAddress() != null && !r.getWalletAddress().isBlank())
+                .orElse(null);
+        if (referrer == null) {
+            return Optional.empty();
+        }
+        Optional<PartnerRepository.Terms> partner = partners.findActive(referrer.getId());
+        int shareBps = partner.map(PartnerRepository.Terms::shareBps).orElse(props.shareBps());
+        Instant until = partner.isPresent()
+                ? (partner.get().months() == null ? null
+                        : referee.getReferredAt().atOffset(ZoneOffset.UTC).plusMonths(partner.get().months()).toInstant())
+                : referee.getReferredAt().plus(props.duration());
+        if (shareBps <= 0 || (until != null && until.isBefore(Instant.now()))) {
+            return Optional.empty();
+        }
+        BigInteger cut = feeMicro.multiply(BigInteger.valueOf(shareBps)).divide(BigInteger.valueOf(10_000));
         if (cut.signum() <= 0) {
             return Optional.empty();
         }
-        return users.findById(referee.getReferredBy())
-                .filter(r -> r.getWalletAddress() != null && !r.getWalletAddress().isBlank())
-                .map(r -> new Split(r.getId(), r.getWalletAddress(), cut));
+        return Optional.of(new Split(referrer.getId(), referrer.getWalletAddress(), cut));
     }
 
     public Summary summary(long userId) {
@@ -109,9 +131,12 @@ public class ReferralService {
         java.math.BigDecimal earned = jdbc.queryForObject(
                 "SELECT COALESCE(SUM(amount_micro), 0) FROM referral_reward WHERE referrer_id = ?",
                 java.math.BigDecimal.class, userId);
+        Optional<PartnerRepository.Terms> partner = partners.findActive(userId);
+        int shareBps = partner.map(PartnerRepository.Terms::shareBps).orElse(props.shareBps());
+        Integer months = partner.isPresent() ? partner.get().months() : Integer.valueOf((int) (props.duration().toDays() / 30));
         return new Summary(code, invited == null ? 0 : invited,
                 earned == null ? BigInteger.ZERO : earned.toBigInteger(),
-                props.shareBps() / 100, props.duration().toDays() / 30);
+                shareBps / 100, months == null ? 0 : months, months == null, partner.isPresent());
     }
 
     private static String randomCode() {

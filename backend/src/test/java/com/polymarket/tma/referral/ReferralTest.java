@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.polymarket.tma.auth.entity.AppUser;
 import com.polymarket.tma.auth.repo.AppUserRepository;
+import com.polymarket.tma.partner.PartnerRepository;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.Instant;
@@ -37,7 +38,11 @@ class ReferralTest {
     }
 
     private static ReferralService service(AppUserRepository users) {
-        return new ReferralService(users, null, new ReferralProperties(2500, Duration.ofDays(365)));
+        return service(users, mock(PartnerRepository.class));
+    }
+
+    private static ReferralService service(AppUserRepository users, PartnerRepository partners) {
+        return new ReferralService(users, null, new ReferralProperties(2500, Duration.ofDays(365)), partners);
     }
 
     @Test
@@ -60,5 +65,34 @@ class ReferralTest {
         when(users.findById(3L)).thenReturn(Optional.of(user(3, 1L, Instant.now(), "0xc")));
         when(users.findById(1L)).thenReturn(Optional.of(user(1, null, null, null)));
         assertThat(service(users).split(3L, BigInteger.valueOf(100_000))).isEmpty();
+    }
+
+    @Test
+    void partnerTermsReplaceTheDefaultOnes() {
+        AppUserRepository users = mock(AppUserRepository.class);
+        PartnerRepository partners = mock(PartnerRepository.class);
+        when(users.findById(1L)).thenReturn(Optional.of(user(1, null, null, "0xPartner")));
+        when(users.findById(2L)).thenReturn(Optional.of(user(2, 1L, Instant.now().minus(Duration.ofDays(400)), "0xb")));
+        when(partners.findActive(1L)).thenReturn(Optional.of(
+                new PartnerRepository.Terms(1, 5000, 24, true, null, Instant.now())));
+
+        var split = service(users, partners).split(2L, BigInteger.valueOf(100_000)).orElseThrow();
+        assertThat(split.referrerAmount()).as("50%, still within 24 months").isEqualTo(BigInteger.valueOf(50_000));
+
+        when(users.findById(3L)).thenReturn(Optional.of(user(3, 1L, Instant.now().minus(Duration.ofDays(800)), "0xc")));
+        assertThat(service(users, partners).split(3L, BigInteger.valueOf(100_000))).as("past 24 months").isEmpty();
+    }
+
+    @Test
+    void lifetimePartnerEarnsForever() {
+        AppUserRepository users = mock(AppUserRepository.class);
+        PartnerRepository partners = mock(PartnerRepository.class);
+        when(users.findById(1L)).thenReturn(Optional.of(user(1, null, null, "0xPartner")));
+        when(users.findById(2L)).thenReturn(Optional.of(user(2, 1L, Instant.now().minus(Duration.ofDays(5000)), "0xb")));
+        when(partners.findActive(1L)).thenReturn(Optional.of(
+                new PartnerRepository.Terms(1, 4000, null, true, null, Instant.now())));
+
+        var split = service(users, partners).split(2L, BigInteger.valueOf(100_000)).orElseThrow();
+        assertThat(split.referrerAmount()).isEqualTo(BigInteger.valueOf(40_000));
     }
 }

@@ -24,7 +24,8 @@ public class ReferralController {
     }
 
     /** @param earnedUsdc referrer's cut of submitted fee batches, in pUSD */
-    public record Me(String code, String link, int invited, String earnedUsdc, int sharePercent, long months) {}
+    public record Me(String code, String link, int invited, String earnedUsdc, int sharePercent, long months,
+                     boolean lifetime, boolean partner) {}
 
     @GetMapping("/me")
     public Mono<Me> me(@AuthenticationPrincipal AuthPrincipal principal) {
@@ -34,6 +35,6 @@ public class ReferralController {
         ReferralService.Summary s = referrals.summary(principal.userId());
         return bot.username().map(name -> new Me(s.code(), "https://t.me/" + name + "?startapp=r" + s.code(),
                 s.invited(), new BigDecimal(s.earnedMicro()).movePointLeft(6).stripTrailingZeros().toPlainString(),
-                s.sharePercent(), s.months()));
+                s.sharePercent(), s.months(), s.lifetime(), s.partner()));
     }
 }

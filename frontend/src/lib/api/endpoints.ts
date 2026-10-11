@@ -12,6 +12,9 @@ import type {
   MarketShare,
   ReferralInfo,
   OperatorStats,
+  PartnerView,
+  PartnerTermsInput,
+  PartnerCabinet,
   Prediction,
   TrackRecord,
   MarketList,
@@ -69,6 +72,13 @@ export const api = {
 
   getOperatorAccess: () => http.get<{ operator: boolean }>('/api/operator/access').then((r) => r.data),
   getOperatorStats: () => http.get<OperatorStats>('/api/operator/stats').then((r) => r.data),
+
+  listPartners: () => http.get<PartnerView[]>('/api/operator/partners').then((r) => r.data),
+  addPartner: (body: PartnerTermsInput & { user: string }) =>
+    http.post<PartnerView>('/api/operator/partners', body).then((r) => r.data),
+  updatePartner: (userId: number, body: PartnerTermsInput & { active: boolean }) =>
+    http.put<PartnerView>(`/api/operator/partners/${userId}`, body).then((r) => r.data),
+  getPartnerCabinet: () => http.get<PartnerCabinet>('/api/partner/me').then((r) => r.data),
 
   getMyReferrals: () => http.get<ReferralInfo>('/api/referrals/me').then((r) => r.data),
 

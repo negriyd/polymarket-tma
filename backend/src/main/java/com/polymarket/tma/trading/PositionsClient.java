@@ -1,6 +1,7 @@
 package com.polymarket.tma.trading;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.market.MarketCacheService;
@@ -28,10 +29,13 @@ public class PositionsClient {
 
     private final WebClient client;
     private final MarketCacheService cache;
+    private final ObjectMapper mapper;
 
-    public PositionsClient(WebClient.Builder builder, AppProperties props, MarketCacheService cache) {
+    public PositionsClient(WebClient.Builder builder, AppProperties props, MarketCacheService cache,
+                           ObjectMapper mapper) {
         this.client = builder.baseUrl(props.polymarket().dataBaseUrl()).build();
         this.cache = cache;
+        this.mapper = mapper;
     }
 
     public Mono<List<Position>> getPositions(String wallet) {
@@ -44,11 +48,17 @@ public class PositionsClient {
                                 "Data API error: " + resp.statusCode().value() + " " + body)))
                 .bodyToMono(new ParameterizedTypeReference<List<Position>>() {});
         return cache.readThrough(key, List.class, CACHE_TTL, loader.cast(List.class))
-                .map(raw -> {
-                    @SuppressWarnings("unchecked")
-                    List<Position> positions = (List<Position>) raw;
-                    return positions;
-                });
+                .map(this::toPositions);
+    }
+
+    /**
+     * A cache hit comes back from the Redis JSON serializer as a list of {@link java.util.LinkedHashMap};
+     * only a fresh load holds real records. Normalize both.
+     */
+    List<Position> toPositions(List<?> raw) {
+        return raw.stream()
+                .map(o -> o instanceof Position p ? p : mapper.convertValue(o, Position.class))
+                .toList();
     }
 
     /**
