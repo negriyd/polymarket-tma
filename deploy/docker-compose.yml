@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: polymarket
     # 5433 on host to avoid clashing with other local postgres instances.
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -21,7 +21,7 @@ services:
     image: redis:7-alpine
     container_name: polymarket-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
@@ -50,7 +50,7 @@ services:
       POSTGRES_PASSWORD: polymarket
       REDIS_URL: redis://redis:6379
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     profiles: ["full"]
 
   frontend:
@@ -70,7 +70,7 @@ services:
       backend:
         condition: service_started
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     profiles: ["full"]
 
 volumes:
