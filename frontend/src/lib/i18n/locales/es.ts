@@ -437,4 +437,12 @@ export const es: Messages = {
   'opp.remove': 'Eliminar socio',
   'opp.removeYes': 'Sí, eliminar',
   'opp.removeHint': 'Pasará a ser un usuario normal: desde ahora recibirá la parte de referido habitual por sus invitados (lo ya pagado no cambia). Podrás añadirlo de nuevo.',
+  'fund.tgWallet.title': 'Recargar desde Wallet en Telegram',
+  'fund.tgWallet.step1': 'Toca «Copiar dirección» abajo: Solana (suele ser más barata) o Tron.',
+  'fund.tgWallet.step2': 'Abre Wallet → Enviar (Retirar) → USDT → pega la dirección.',
+  'fund.tgWallet.step3': 'Elige la MISMA red que la dirección copiada: Solana o Tron (TRC-20). ¡No TON!',
+  'fund.tgWallet.step4': 'Envía al menos $2 más la comisión de red de Wallet (se muestra antes de enviar; mayor en Tron). Los pUSD llegan aquí en unos minutos.',
+  'fund.tgWallet.copy': 'Copiar dirección · USDT {chain}',
+  'fund.tgWallet.open': 'Abrir Wallet',
+  'fund.tgWallet.warn': 'Los USDT enviados por TON a esta dirección se perderán: el puente no admite TON.',
 };

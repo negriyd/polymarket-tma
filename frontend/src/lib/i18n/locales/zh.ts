@@ -437,4 +437,12 @@ export const zh: Messages = {
   'opp.remove': '移除合作伙伴',
   'opp.removeYes': '确认移除',
   'opp.removeHint': '对方将成为普通用户：此后其邀请的用户按默认推荐分成计算（已支付部分不变）。之后可重新添加。',
+  'fund.tgWallet.title': '从 Telegram 钱包充值',
+  'fund.tgWallet.step1': '点击下方“复制地址”——Solana（通常更便宜）或 Tron。',
+  'fund.tgWallet.step2': '打开钱包 → 发送（提现）→ USDT → 粘贴地址。',
+  'fund.tgWallet.step3': '选择与复制地址相同的网络：Solana 或 Tron（TRC-20）。不要选 TON！',
+  'fund.tgWallet.step4': '至少发送 $2 加上钱包的网络手续费（发送前会显示；Tron 更高）。pUSD 几分钟内到账。',
+  'fund.tgWallet.copy': '复制地址 · USDT {chain}',
+  'fund.tgWallet.open': '打开钱包',
+  'fund.tgWallet.warn': '通过 TON 网络发送到此地址的 USDT 将丢失——跨链桥不支持 TON。',
 };

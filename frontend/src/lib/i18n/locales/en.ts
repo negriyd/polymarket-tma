@@ -457,4 +457,12 @@ export const en = {
   'opp.remove': 'Remove partner',
   'opp.removeYes': 'Yes, remove',
   'opp.removeHint': 'They become a regular user: users they invited earn them the default referral share from now on (paid out amounts stay). You can add them again later.',
+  'fund.tgWallet.title': 'Top up from Wallet in Telegram',
+  'fund.tgWallet.step1': 'Tap “Copy address” below — Solana (usually cheaper) or Tron.',
+  'fund.tgWallet.step2': 'Open Wallet → Send (Withdraw) → USDT → paste the address.',
+  'fund.tgWallet.step3': 'Choose the SAME network as the copied address: Solana or Tron (TRC-20). Not TON!',
+  'fund.tgWallet.step4': 'Send at least $2 plus Wallet’s network fee (shown before sending; higher on Tron). pUSD arrives here in a few minutes.',
+  'fund.tgWallet.copy': 'Copy address · USDT {chain}',
+  'fund.tgWallet.open': 'Open Wallet',
+  'fund.tgWallet.warn': 'USDT sent on TON to this address will be lost — the bridge does not support TON.',
 } as const;

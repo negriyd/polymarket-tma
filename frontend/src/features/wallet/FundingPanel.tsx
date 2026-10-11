@@ -4,6 +4,7 @@ import { formatUnits } from 'viem';
 import { api } from '@/lib/api/endpoints';
 import type { BridgeDeposit, FundingOption } from '@/lib/api/types';
 import { useLocale, useT, type TFunction } from '@/lib/i18n';
+import { hapticImpact, tg } from '@/lib/telegram/webApp';
 
 const IN_FLIGHT = new Set(['DEPOSIT_DETECTED', 'PROCESSING', 'ORIGIN_TX_CONFIRMED', 'SUBMITTED']);
 
@@ -74,8 +75,54 @@ export function FundingPanel() {
     return <p className="text-xs text-rose-500">{t('fund.unavailable')}</p>;
   }
 
+  // Wallet in Telegram sends USDT on Solana and Tron too; the bridge takes both (not TON).
+  const walletOptions = ['Solana', 'Tron']
+    .map((chain) => options.find((o) => o.symbol === 'USDT' && o.chainName === chain))
+    .filter((o): o is FundingOption => !!o);
+
   return (
     <div className="space-y-2">
+      {walletOptions.length > 0 && (
+        <section className="space-y-1.5 rounded-lg bg-tg-bg p-2.5">
+          <p className="text-xs font-semibold text-tg-text">👛 {t('fund.tgWallet.title')}</p>
+          <ol className="list-decimal space-y-0.5 pl-4 text-[11px] leading-snug text-tg-text">
+            <li>{t('fund.tgWallet.step1')}</li>
+            <li>{t('fund.tgWallet.step2')}</li>
+            <li>{t('fund.tgWallet.step3')}</li>
+            <li>{t('fund.tgWallet.step4')}</li>
+          </ol>
+          <div className="flex flex-wrap gap-1.5">
+            {walletOptions.map((o) => (
+              <button
+                key={key(o)}
+                type="button"
+                onClick={() => {
+                  setSelected(key(o));
+                  void copy(o.depositAddress);
+                }}
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                  key(o) === selected ? 'bg-tg-button text-tg-buttonText' : 'bg-tg-secondary text-tg-text'
+                }`}
+              >
+                {t('fund.tgWallet.copy', { chain: o.chainName })}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                hapticImpact('light');
+                if (tg.initData) tg.openTelegramLink('https://t.me/wallet');
+                else window.open('https://t.me/wallet', '_blank');
+              }}
+              className="rounded-lg bg-tg-secondary px-2.5 py-1.5 text-xs font-medium text-tg-link"
+            >
+              {t('fund.tgWallet.open')} ↗
+            </button>
+          </div>
+          <p className="text-[10px] leading-snug text-amber-500">{t('fund.tgWallet.warn')}</p>
+        </section>
+      )}
+
       <p className="text-[11px] leading-snug text-amber-500">
         {t('fund.warning')}
       </p>
