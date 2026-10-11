@@ -1,14 +1,10 @@
-import { useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api/endpoints';
 import { MarketCard } from '@/components/MarketCard';
 import { Spinner } from '@/components/Spinner';
 import { ErrorView } from '@/components/ErrorView';
-import {
-  MARKET_GROUPS,
-  type MarketGroupId,
-  marketGroupById,
-} from '@/features/markets/marketGroups';
+import { MARKET_GROUPS, marketGroupById } from '@/features/markets/marketGroups';
+import { useMarketFilters } from '@/features/markets/filtersStore';
 import { useT, type MessageKey } from '@/lib/i18n';
 
 const ORDERS: { value: string; label: MessageKey }[] = [
@@ -21,22 +17,11 @@ const ORDERS: { value: string; label: MessageKey }[] = [
 
 export function MarketsPage() {
   const t = useT();
-  const [groupId, setGroupId] = useState<MarketGroupId>('all');
+  const { groupId, order, ascending, search, selectGroup, setOrder, setSearch } = useMarketFilters();
   const group = marketGroupById(groupId);
-
-  const [order, setOrder] = useState(group.defaultOrder);
-  const [ascending, setAscending] = useState(group.defaultAscending);
-  const [search, setSearch] = useState('');
 
   const searchTrim = search.trim();
   const effectiveTag = searchTrim ? undefined : group.tag;
-
-  const selectGroup = (id: MarketGroupId) => {
-    const g = marketGroupById(id);
-    setGroupId(id);
-    setOrder(g.defaultOrder);
-    setAscending(g.defaultAscending);
-  };
 
   const q = useInfiniteQuery({
     queryKey: ['markets', groupId, order, ascending, searchTrim, effectiveTag],
