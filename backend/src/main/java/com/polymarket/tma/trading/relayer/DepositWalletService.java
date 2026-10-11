@@ -53,6 +53,7 @@ public class DepositWalletService {
     private final ApprovalStatusReader reader;
     private final PendingBatchCache pending;
     private final ObjectMapper objectMapper;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public DepositWalletService(AppUserRepository userRepo,
                                 RelayerClient relayer,
@@ -60,7 +61,9 @@ public class DepositWalletService {
                                 DepositWalletApprovals approvals,
                                 ApprovalStatusReader reader,
                                 PendingBatchCache pending,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
         this.userRepo = userRepo;
         this.relayer = relayer;
         this.relayerProps = relayerProps;
@@ -133,8 +136,18 @@ public class DepositWalletService {
     /** Batch moving {@code amount} pUSD (6 decimals) from the deposit wallet to {@code recipient}. */
     public DepositWalletDtos.PreparedBatch prepareCollateralTransfer(long userId, String purpose,
                                                                      String recipient, BigInteger amount) {
-        return prepareBatch(userId, purpose, List.of(new DepositWalletBatch.Call(
-                relayerProps.collateralAddress(), "0", FeeCalldataBuilder.erc20Transfer(recipient, amount))));
+        return prepareCollateralTransfers(userId, purpose, Map.of(recipient, amount));
+    }
+
+    /** pUSD transfers to several recipients in one signed batch (e.g. platform fee + referrer's cut). */
+    public DepositWalletDtos.PreparedBatch prepareCollateralTransfers(long userId, String purpose,
+                                                                      Map<String, BigInteger> amounts) {
+        List<DepositWalletBatch.Call> calls = amounts.entrySet().stream()
+                .filter(e -> e.getValue() != null && e.getValue().signum() > 0)
+                .map(e -> new DepositWalletBatch.Call(relayerProps.collateralAddress(), "0",
+                        FeeCalldataBuilder.erc20Transfer(e.getKey(), e.getValue())))
+                .toList();
+        return prepareBatch(userId, purpose, calls);
     }
 
     /**
@@ -177,6 +190,8 @@ public class DepositWalletService {
         pending.invalidate(userId, batch.batchHash());
         log.info("{} batch submitted user={} wallet={} calls={} tx={}",
                 batch.purpose(), userId, batch.depositWallet(), batch.calls().size(), tx.transactionID());
+        events.publishEvent(new DepositWalletBatchSubmitted(userId, batch.purpose(), batch.batchHash(),
+                tx.transactionID()));
         return toDto(tx);
     }
 

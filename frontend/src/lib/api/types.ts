@@ -60,6 +60,16 @@ export interface MarketEvent {
   seriesEvents?: SeriesEvent[] | null;
 }
 
+export interface ReferralInfo {
+  code: string;
+  link: string;
+  invited: number;
+  /** Fee share paid to this user so far, pUSD. */
+  earnedUsdc: string;
+  sharePercent: number;
+  months: number;
+}
+
 export interface MarketShare {
   link: string;
   text: string;

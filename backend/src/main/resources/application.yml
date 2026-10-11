@@ -65,6 +65,15 @@ app:
   telegram:
     bot-token: ${BOT_TOKEN:}
     init-data-ttl: PT24H
+    # Public HTTPS URL of POST /api/telegram/webhook (inline mode). Empty = don't register a webhook.
+    webhook-url: ${TELEGRAM_WEBHOOK_URL:}
+    # Telegram echoes it in X-Telegram-Bot-Api-Secret-Token; requests without it are rejected.
+    webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:}
+  referrals:
+    # Referrer's share of the platform trading fee (2500 = 25% of the fee).
+    share-bps: ${REFERRAL_SHARE_BPS:2500}
+    # How long after the invited user's sign-up the referrer earns.
+    duration: ${REFERRAL_DURATION:P365D}
   polymarket:
     gamma-base-url: https://gamma-api.polymarket.com
     clob-base-url: https://clob.polymarket.com

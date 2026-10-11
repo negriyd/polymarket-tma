@@ -1,5 +1,7 @@
 package com.polymarket.tma.auth;
 
+import com.polymarket.tma.referral.ReferralService;
+
 import com.polymarket.tma.auth.dto.AuthDtos;
 import com.polymarket.tma.auth.entity.AppUser;
 import com.polymarket.tma.auth.entity.RefreshToken;
@@ -27,23 +29,34 @@ public class AuthService {
     private final TelegramInitDataValidator validator;
     private final JwtService jwt;
     private final AppProperties props;
+    private final ReferralService referrals;
 
     public AuthService(AppUserRepository userRepo,
                        RefreshTokenRepository refreshRepo,
                        TelegramInitDataValidator validator,
                        JwtService jwt,
-                       AppProperties props) {
+                       AppProperties props,
+                       ReferralService referrals) {
         this.userRepo = userRepo;
         this.refreshRepo = refreshRepo;
         this.validator = validator;
         this.jwt = jwt;
         this.props = props;
+        this.referrals = referrals;
     }
 
     @Transactional
     public AuthDtos.TokenPair loginWithTelegram(String initDataRaw) {
         TelegramInitData parsed = validator.validate(initDataRaw);
+        boolean newUser = userRepo.findByTelegramId(parsed.user().id()).isEmpty();
         AppUser user = upsertUser(parsed.user());
+        try {
+            referrals.onLaunch(user, newUser, parsed.startParam());
+        } catch (RuntimeException e) {
+            // Attribution is best effort; it must never block signing in.
+            org.slf4j.LoggerFactory.getLogger(AuthService.class)
+                    .warn("Launch attribution failed for user {}: {}", user.getId(), e.toString());
+        }
         return issueTokens(user);
     }
 

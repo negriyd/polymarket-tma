@@ -66,7 +66,7 @@ class DepositWalletServiceTest {
                 "0x006F54F7f9A22e0000CC2AB60031000000ae9fEF", "0xAdA100Db00Ca00073811820692005400218FcE1f",
                 "0xadA2005600Dec949baf300f4C6120000bDB6eAab");
         approvals = new DepositWalletApprovals(app, relayerProps);
-        service = new DepositWalletService(userRepo, relayer, relayerProps, approvals, reader, pending, new ObjectMapper());
+        service = new DepositWalletService(userRepo, relayer, relayerProps, approvals, reader, pending, new ObjectMapper(), event -> {});
 
         AppUser user = new AppUser();
         user.setWalletAddress(OWNER);

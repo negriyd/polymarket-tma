@@ -60,6 +60,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/telegram",
                                 "/api/auth/refresh",
+                                "/api/telegram/webhook",
                                 "/api/markets/**",
                                 "/api/fees",
                                 "/api/bets/config",

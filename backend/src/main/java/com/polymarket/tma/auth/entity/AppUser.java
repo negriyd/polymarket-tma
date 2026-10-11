@@ -48,6 +48,21 @@ public class AppUser {
     @Column(name = "wallet_address", length = 64)
     private String walletAddress;
 
+    /** Public code in this user's invite links ({@code startapp=r<code>}); created on first use. */
+    @Column(name = "ref_code", length = 16, unique = true)
+    private String refCode;
+
+    /** Who invited this user; set once, at sign-up. */
+    @Column(name = "referred_by")
+    private Long referredBy;
+
+    @Column(name = "referred_at")
+    private Instant referredAt;
+
+    /** Channel tag of the link the user signed up through ({@code startapp=s<tag>}). */
+    @Column(name = "signup_source", length = 32)
+    private String signupSource;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

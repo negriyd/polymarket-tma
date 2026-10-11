@@ -27,8 +27,14 @@ public record AppProperties(
 
     public record Telegram(
             String botToken,
-            Duration initDataTtl
-    ) {}
+            Duration initDataTtl,
+            String webhookUrl,
+            String webhookSecret
+    ) {
+        public Telegram(String botToken, Duration initDataTtl) {
+            this(botToken, initDataTtl, null, null);
+        }
+    }
 
     public record Polymarket(
             String gammaBaseUrl,

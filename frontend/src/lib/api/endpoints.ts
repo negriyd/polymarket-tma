@@ -10,6 +10,7 @@ import type {
   Market,
   MarketEvent,
   MarketShare,
+  ReferralInfo,
   MarketList,
   MarketComment,
   OrderSignatureType,
@@ -54,6 +55,8 @@ export const api = {
 
   getMarket: (marketKey: string) =>
     http.get<Market>(`/api/markets/${marketKey}`).then((r) => r.data),
+
+  getMyReferrals: () => http.get<ReferralInfo>('/api/referrals/me').then((r) => r.data),
 
   shareMarket: (body: { marketKey: string; side?: 'yes' | 'no' }) =>
     http.post<MarketShare>('/api/share/market', body).then((r) => r.data),

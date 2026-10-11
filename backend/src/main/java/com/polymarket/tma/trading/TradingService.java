@@ -11,6 +11,7 @@ import com.polymarket.tma.trading.OrderBuilder.BuiltOrder;
 import com.polymarket.tma.trading.clob.ClobCredentials;
 import com.polymarket.tma.trading.clob.ClobCredentialsStore;
 import com.polymarket.tma.trading.dto.OrderDtos;
+import com.polymarket.tma.referral.ReferralService;
 import com.polymarket.tma.trading.entity.OrderAudit;
 import com.polymarket.tma.trading.relayer.DepositWalletDtos;
 import com.polymarket.tma.trading.relayer.DepositWalletService;
@@ -44,6 +45,7 @@ public class TradingService {
     private final FeeService fees;
     private final MarketService marketService;
     private final DepositWalletService depositWallets;
+    private final ReferralService referrals;
 
     public TradingService(OrderBuilder builder,
                           PendingOrderCache pending,
@@ -53,7 +55,9 @@ public class TradingService {
                           ClobCredentialsStore credentialsStore,
                           FeeService fees,
                           MarketService marketService,
-                          DepositWalletService depositWallets) {
+                          DepositWalletService depositWallets,
+                          ReferralService referrals) {
+        this.referrals = referrals;
         this.builder = builder;
         this.pending = pending;
         this.userRepo = userRepo;
@@ -92,8 +96,25 @@ public class TradingService {
         DepositWalletDtos.PreparedBatch feeBatch = null;
         if (fee != null && req.signatureType() == OrderDtos.SignatureType.POLY_1271) {
             // Funds live in the deposit wallet (pUSD), and the EOA has no gas: charge from there.
-            feeBatch = depositWallets.prepareCollateralTransfer(
-                    userId, "TRADING_FEE", fee.recipient(), fee.amountMicroUsdc());
+            // An invited user's fee is split in the same batch: the referrer's cut goes to their
+            // deposit wallet (counterfactual address is fine — only its owner can deploy it).
+            ReferralService.Split split = referrals.split(userId, fee.amountMicroUsdc()).orElse(null);
+            String referrerWallet = split == null ? null : depositWallets.depositWalletOf(split.referrerEoa());
+            if (referrerWallet != null
+                    && (referrerWallet.equalsIgnoreCase(fee.recipient()) || referrerWallet.equalsIgnoreCase(maker))) {
+                split = null;
+            }
+            java.util.Map<String, BigInteger> transfers = new java.util.LinkedHashMap<>();
+            if (split != null) {
+                transfers.put(fee.recipient(), fee.amountMicroUsdc().subtract(split.referrerAmount()));
+                transfers.put(referrerWallet, split.referrerAmount());
+            } else {
+                transfers.put(fee.recipient(), fee.amountMicroUsdc());
+            }
+            feeBatch = depositWallets.prepareCollateralTransfers(userId, "TRADING_FEE", transfers);
+            if (split != null) {
+                referrals.rememberPendingReward(feeBatch.batchHash(), userId, split);
+            }
         }
         return new OrderDtos.TypedDataResponse(
                 built.orderHash(),

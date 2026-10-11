@@ -61,6 +61,24 @@ public class TelegramBotClient {
                 .switchIfEmpty(Mono.error(ApiException.upstream("TELEGRAM_PREPARE", "No prepared message id")));
     }
 
+    /** Answers an inline query ({@code @bot text} in any chat) with market cards. */
+    public Mono<Void> answerInlineQuery(String queryId, java.util.List<Map<String, Object>> results) {
+        return call("answerInlineQuery", Map.of(
+                "inline_query_id", queryId,
+                "results", results,
+                "cache_time", 30,
+                // Results carry the asking user's invite code, so they must not be shared across users.
+                "is_personal", true)).then();
+    }
+
+    /** Points Telegram at our webhook; only inline queries are needed. */
+    public Mono<Void> setWebhook(String url, String secret) {
+        return call("setWebhook", Map.of(
+                "url", url,
+                "secret_token", secret,
+                "allowed_updates", java.util.List.of("inline_query"))).then();
+    }
+
     private Mono<JsonNode> call(String method, Map<String, Object> body) {
         return client.post().uri("/" + method).bodyValue(body)
                 .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))

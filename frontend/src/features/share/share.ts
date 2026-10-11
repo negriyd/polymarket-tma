@@ -46,9 +46,18 @@ export interface MarketDeepLink {
   friendPick?: 'yes' | 'no';
 }
 
-/** Parses `startapp=m_<id>[_y|_n]` from the Telegram launch parameters. */
+/**
+ * Parses our `startapp` value: `_`-separated tokens — `m_<id>` market, `y`/`n` pick, `r<code>`
+ * referrer, `s<tag>` channel (the backend reads the same format from signed initData).
+ */
 export function parseStartParam(param?: string | null): MarketDeepLink | null {
-  const m = /^m_(\d+)(?:_([yn]))?/.exec(param ?? '');
-  if (!m) return null;
-  return { marketId: m[1], friendPick: m[2] === 'y' ? 'yes' : m[2] === 'n' ? 'no' : undefined };
+  const tokens = (param ?? '').split('_');
+  let marketId: string | undefined;
+  let friendPick: 'yes' | 'no' | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === 'm' && /^\d{1,20}$/.test(tokens[i + 1] ?? '')) marketId = tokens[++i];
+    else if (tokens[i] === 'y') friendPick = 'yes';
+    else if (tokens[i] === 'n') friendPick = 'no';
+  }
+  return marketId ? { marketId, friendPick } : null;
 }

@@ -3,9 +3,9 @@ package com.polymarket.tma.share;
 import java.util.Map;
 
 /** The few strings of a shared market card, per app locale (English fallback). */
-final class ShareTexts {
+public final class ShareTexts {
 
-    record Texts(String yes, String no, String myPick, String yourTurn, String open) {}
+    public record Texts(String yes, String no, String myPick, String yourTurn, String open) {}
 
     private static final Texts EN = new Texts("Yes", "No", "My forecast: %s", "What do you think?", "Open market");
 
@@ -18,7 +18,7 @@ final class ShareTexts {
 
     private ShareTexts() {}
 
-    static Texts of(String locale) {
+    public static Texts of(String locale) {
         return locale == null ? EN : BY_LOCALE.getOrDefault(locale, EN);
     }
 }

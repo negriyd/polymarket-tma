@@ -50,6 +50,7 @@ class TradingServiceMakerResolutionTest {
     @Mock private ClobCredentialsStore credentialsStore;
     @Mock private FeeService fees;
     @Mock private MarketService marketService;
+    @Mock private com.polymarket.tma.referral.ReferralService referrals;
     @Mock private DepositWalletService depositWallets;
 
     private TradingService service;
@@ -70,7 +71,7 @@ class TradingServiceMakerResolutionTest {
         // Default: regular (non-negRisk) markets unless overridden in a test.
         lenient().when(marketService.get(any())).thenReturn(Mono.just(stubMarket(false)));
 
-        service = new TradingService(builder, pending, userRepo, auditRepo, clob, credentialsStore, fees, marketService, depositWallets);
+        service = new TradingService(builder, pending, userRepo, auditRepo, clob, credentialsStore, fees, marketService, depositWallets, referrals);
     }
 
     @Test
@@ -143,7 +144,33 @@ class TradingServiceMakerResolutionTest {
 
         assertThat(resp.feeBatch()).isNull();
         assertThat(resp.feeAmountUsdc()).isNull();
-        verify(depositWallets, never()).prepareCollateralTransfer(any(Long.class), any(), any(), any());
+        verify(depositWallets, never()).prepareCollateralTransfers(any(Long.class), any(), any());
+    }
+
+    @Test
+    void invitedUsersFeeIsSplitWithTheReferrerInOneBatch() {
+        String depositWallet = "0x0000000000000000000000000000000000000dec";
+        String platform = "0x5757DA608Cb6Feaa78dB6388506894F59621eB77";
+        String referrerWallet = "0x00000000000000000000000000000000000000aa";
+        when(depositWallets.depositWalletOf(WALLET)).thenReturn(depositWallet);
+        when(depositWallets.depositWalletOf("0xReferrerEoa")).thenReturn(referrerWallet);
+        when(fees.quote(any())).thenReturn(new com.polymarket.tma.fees.FeeService.FeeQuote(
+                java.math.BigInteger.valueOf(100_000), 100, platform, null));
+        var split = new com.polymarket.tma.referral.ReferralService.Split(
+                9L, "0xReferrerEoa", java.math.BigInteger.valueOf(25_000));
+        when(referrals.split(1L, java.math.BigInteger.valueOf(100_000))).thenReturn(Optional.of(split));
+        var prepared = new com.polymarket.tma.trading.relayer.DepositWalletDtos.PreparedBatch("0xbatch", Map.of(), 2);
+        when(depositWallets.prepareCollateralTransfers(eq(1L), eq("TRADING_FEE"), any())).thenReturn(prepared);
+
+        service.prepare(1L, req(OrderDtos.SignatureType.POLY_1271, null));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, java.math.BigInteger>> transfers = ArgumentCaptor.forClass(Map.class);
+        verify(depositWallets).prepareCollateralTransfers(eq(1L), eq("TRADING_FEE"), transfers.capture());
+        assertThat(transfers.getValue()).containsExactly(
+                Map.entry(platform, java.math.BigInteger.valueOf(75_000)),
+                Map.entry(referrerWallet, java.math.BigInteger.valueOf(25_000)));
+        verify(referrals).rememberPendingReward("0xbatch", 1L, split);
     }
 
     @Test
@@ -164,7 +191,8 @@ class TradingServiceMakerResolutionTest {
         var tx = new com.polymarket.tma.wallet.ApprovalDtos.UnsignedTx("TRADING_FEE_TRANSFER", "0xusdc", "0x", "0x0", 137);
         when(fees.quote(any())).thenReturn(new FeeService.FeeQuote(java.math.BigInteger.valueOf(25_000), 50, "0xfee", tx));
         var batch = new com.polymarket.tma.trading.relayer.DepositWalletDtos.PreparedBatch("0xhash", Map.of(), 1);
-        when(depositWallets.prepareCollateralTransfer(1L, "TRADING_FEE", "0xfee", java.math.BigInteger.valueOf(25_000)))
+        when(depositWallets.prepareCollateralTransfers(1L, "TRADING_FEE",
+                Map.of("0xfee", java.math.BigInteger.valueOf(25_000))))
                 .thenReturn(batch);
 
         var resp = service.prepare(1L, req(OrderDtos.SignatureType.POLY_1271, null));

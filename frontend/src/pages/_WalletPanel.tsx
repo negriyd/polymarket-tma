@@ -8,6 +8,7 @@ import { Spinner } from '@/components/Spinner';
 import { api } from '@/lib/api/endpoints';
 import type { Bet } from '@/lib/api/types';
 import { useLocale, useT } from '@/lib/i18n';
+import { ReferralSection } from '@/features/share/ReferralSection';
 
 function statusColor(status: string): string {
   switch (status) {
@@ -196,6 +197,7 @@ export function WalletPanel() {
             <>
               <ClobAuthSection walletAddress={w.address} />
               <DepositWalletSection walletAddress={w.address} />
+              <ReferralSection />
 
               <section className="space-y-2">
                 <header className="flex items-baseline justify-between gap-2">
