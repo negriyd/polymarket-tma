@@ -90,6 +90,15 @@ public class PositionsClient {
             Boolean favorite
     ) {
 
+        /** Returns a copy with a translated {@code title}. */
+        public Position withTitle(String translated) {
+            return new Position(
+                    proxyWallet, asset, conditionId, size, avgPrice, initialValue, currentValue,
+                    cashPnl, percentPnl, totalBought, realizedPnl, percentRealizedPnl, curPrice,
+                    redeemable, mergeable, translated, slug, icon, eventSlug, outcome, outcomeIndex,
+                    oppositeOutcome, oppositeAsset, endDate, negativeRisk, favorite);
+        }
+
         /** Returns a copy with {@code favorite} replaced. */
         public Position withFavorite(boolean fav) {
             return new Position(

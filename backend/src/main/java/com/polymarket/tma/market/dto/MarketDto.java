@@ -53,6 +53,13 @@ public record MarketDto(
         /** Smallest order CLOB accepts, in outcome shares (typically 5). */
         @JsonProperty("orderMinSize") BigDecimal orderMinSize
 ) {
+    /** Copy with a translated {@code question}. */
+    public MarketDto withQuestion(String translated) {
+        return new MarketDto(id, conditionId, translated, slug, description, category, image, icon, endDate,
+                gameStartTime, marketSlug, active, closed, acceptingOrders, archived, volume, volume24h, liquidity,
+                outcomes, clobTokenIds, outcomePrices, negRisk, orderPriceMinTickSize, orderMinSize);
+    }
+
     /** Market without CLOB order constraints (tests, cache entries written before they were mapped). */
     public MarketDto(String id, String conditionId, String question, String slug, String description,
                      String category, String image, String icon, Instant endDate, Instant gameStartTime,

@@ -5,7 +5,7 @@ import { useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth
 import { api } from '@/lib/api/endpoints';
 import type { Position } from '@/lib/api/types';
 import { formatError as formatErr } from '@/lib/errors';
-import { useLocale, useT, type Locale, type TFunction } from '@/lib/i18n';
+import { outcomeText, useLocale, useT, type Locale, type TFunction } from '@/lib/i18n';
 import { hapticImpact } from '@/lib/telegram/webApp';
 import { signAndRelayBatch, waitForRelayerTx } from '@/features/wallet/relayerTx';
 
@@ -116,7 +116,7 @@ export function PositionRow({ p, walletAddress }: Props) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${outcomeColor}`}>
-              {p.outcome ?? '—'}
+              {p.outcome ? outcomeText(p.outcome, t) : '—'}
             </span>
             {p.favorite && (
               <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-500">
@@ -157,7 +157,7 @@ export function PositionRow({ p, walletAddress }: Props) {
       {p.redeemable && walletAddress && (
         <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-tg-bg p-2">
           <span className="text-[11px] text-tg-hint">
-            {t('pos.settled', { outcome: p.outcome ?? '' })}
+            {t('pos.settled', { outcome: outcomeText(p.outcome, t) })}
           </span>
           <button
             type="button"

@@ -10,7 +10,7 @@ import { isPriceChangeMessage } from '@/lib/ws/livePayload';
 import { isWalletConfigured } from '@/features/wallet/useWallet';
 import { MarketTradeSheet } from '@/features/trading/MarketTradeSheet';
 import { ClobTradeSheet } from '@/features/trading/ClobTradeSheet';
-import { Trans, useLocale, useT } from '@/lib/i18n';
+import { outcomeText, Trans, useLocale, useT } from '@/lib/i18n';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
@@ -118,7 +118,7 @@ export function MarketDetailPage() {
     const tokens = m.clobTokenIds ?? [];
     const outcomes = m.outcomes ?? [];
     const idx = tokens.findIndex((t) => t === assetId);
-    if (idx >= 0 && outcomes[idx]) return outcomes[idx];
+    if (idx >= 0 && outcomes[idx]) return outcomeText(outcomes[idx], t);
     const short = assetId.length > 12 ? `${assetId.slice(0, 6)}…${assetId.slice(-4)}` : assetId;
     return t('market.outcomeShort', { id: short });
   };
@@ -200,7 +200,7 @@ export function MarketDetailPage() {
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
             {betPool.data.sides.map((s) => (
               <div key={s.outcomeIndex} className="rounded-lg bg-tg-bg/40 px-2 py-2">
-                <p className="font-medium text-tg-text">{s.outcomeLabel}</p>
+                <p className="font-medium text-tg-text">{outcomeText(s.outcomeLabel, t)}</p>
                 <p className="tabular-nums text-tg-hint">${s.totalUsdc}</p>
                 <p className="text-[10px] text-tg-hint">
                   {t('market.implied', { pct: (Number(s.impliedProbability) * 100).toFixed(1) })}

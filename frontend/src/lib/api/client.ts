@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import type { ApiError, TokenPair } from './types';
 import { useAuthStore } from '@/features/auth/store';
+import { useLocaleStore } from '@/lib/i18n/store';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -21,6 +22,8 @@ http.interceptors.request.use((cfg) => {
   if (token && cfg.headers) {
     cfg.headers.Authorization = `Bearer ${token}`;
   }
+  // The backend asks Polymarket for market titles in this language.
+  if (cfg.headers) cfg.headers['Accept-Language'] = useLocaleStore.getState().locale;
   return cfg;
 });
 

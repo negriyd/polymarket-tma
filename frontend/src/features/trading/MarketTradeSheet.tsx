@@ -5,7 +5,7 @@ import { useSendTransaction, useWallets } from '@privy-io/react-auth';
 import { api } from '@/lib/api/endpoints';
 import type { Market } from '@/lib/api/types';
 import { formatError as formatErr } from '@/lib/errors';
-import { Trans, useT } from '@/lib/i18n';
+import { outcomeText, Trans, useT } from '@/lib/i18n';
 import { useWallet } from '@/features/wallet/useWallet';
 import { hapticImpact } from '@/lib/telegram/webApp';
 
@@ -50,7 +50,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
 
   const outcomeIndex = outcomeIndexForSide(market, outcome);
   const outcomeLabel =
-    market.outcomes?.[outcomeIndex] ?? t(outcome === 'yes' ? 'common.yes' : 'common.no');
+    outcomeText(market.outcomes?.[outcomeIndex], t) || t(outcome === 'yes' ? 'common.yes' : 'common.no');
   const cid = market.conditionId;
 
   const [usdcStr, setUsdcStr] = useState('5');
@@ -206,7 +206,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
           <div className="mt-2 grid grid-cols-2 gap-2">
             {pool.data.sides.map((s) => (
               <div key={s.outcomeIndex} className="rounded-lg bg-tg-bg/50 px-2 py-1.5">
-                <p className="font-medium text-tg-text">{s.outcomeLabel}</p>
+                <p className="font-medium text-tg-text">{outcomeText(s.outcomeLabel, t)}</p>
                 <p className="tabular-nums">${s.totalUsdc}</p>
                 <p className="text-[10px]">
                   {t('bet.ofPool', { pct: (Number(s.impliedProbability) * 100).toFixed(1) })}

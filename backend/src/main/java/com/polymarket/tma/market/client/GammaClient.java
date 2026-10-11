@@ -165,6 +165,21 @@ public class GammaClient {
                 .doOnError(e -> log.warn("Gamma listMarketsBySlug failed: {}", e.toString()));
     }
 
+    /** Markets by condition id with titles in {@code locale} (Gamma falls back to English per market). */
+    public Mono<List<MarketDto>> marketsByConditionIds(List<String> conditionIds, String locale) {
+        return client.get()
+                .uri(uri -> {
+                    uri.path("/markets").queryParam("limit", conditionIds.size()).queryParam("locale", locale);
+                    conditionIds.forEach(id -> uri.queryParam("condition_ids", id));
+                    return uri.build();
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapError)
+                .bodyToMono(new ParameterizedTypeReference<List<MarketDto>>() {})
+                .retryWhen(retrySpec("marketsByConditionIds"))
+                .doOnError(e -> log.warn("Gamma marketsByConditionIds({}) failed: {}", locale, e.toString()));
+    }
+
     public Mono<MarketDto> getMarket(String conditionId) {
         return client.get()
                 .uri(uri -> uri.path("/markets/{id}").build(conditionId))

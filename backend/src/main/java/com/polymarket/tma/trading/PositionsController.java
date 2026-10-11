@@ -4,13 +4,17 @@ import com.polymarket.tma.auth.entity.AppUser;
 import com.polymarket.tma.auth.jwt.AuthPrincipal;
 import com.polymarket.tma.auth.repo.AppUserRepository;
 import com.polymarket.tma.common.ApiException;
+import com.polymarket.tma.market.i18n.MarketLocale;
+import com.polymarket.tma.market.i18n.MarketTranslationService;
 import com.polymarket.tma.market.repo.FavoriteMarketRepository;
 import com.polymarket.tma.trading.relayer.RelayerClient;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
@@ -23,15 +27,18 @@ public class PositionsController {
     private final AppUserRepository userRepo;
     private final FavoriteMarketRepository favorites;
     private final RelayerClient relayer;
+    private final MarketTranslationService translations;
 
     public PositionsController(PositionsClient positions,
                                AppUserRepository userRepo,
                                FavoriteMarketRepository favorites,
-                               RelayerClient relayer) {
+                               RelayerClient relayer,
+                               MarketTranslationService translations) {
         this.positions = positions;
         this.userRepo = userRepo;
         this.favorites = favorites;
         this.relayer = relayer;
+        this.translations = translations;
     }
 
     /**
@@ -43,7 +50,9 @@ public class PositionsController {
      * <p>CLOB v2 orders use {@code maker = deposit wallet}, so outcome tokens land there, not on the EOA.
      */
     @GetMapping("/positions")
-    public Mono<List<PositionsClient.Position>> list(@AuthenticationPrincipal AuthPrincipal principal) {
+    public Mono<List<PositionsClient.Position>> list(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String language) {
         AppUser u = requireWallet(principal);
         Set<String> favored = favorites.findAllByUserId(u.getId()).stream()
                 .map(f -> f.getConditionId() == null ? "" : f.getConditionId().toLowerCase())
@@ -52,7 +61,9 @@ public class PositionsController {
                 .map(list -> list.stream()
                         .map(p -> p.withFavorite(p.conditionId() != null
                                 && favored.contains(p.conditionId().toLowerCase())))
-                        .toList());
+                        .toList())
+                .flatMap(list -> translations.translate(list, MarketLocale.fromHeader(language),
+                        PositionsClient.Position::conditionId, PositionsClient.Position::withTitle));
     }
 
     private AppUser requireWallet(AuthPrincipal principal) {

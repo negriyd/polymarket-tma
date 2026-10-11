@@ -28,6 +28,9 @@ class PositionsControllerTest {
     @Mock AppUserRepository userRepo;
     @Mock FavoriteMarketRepository favoriteRepo;
     @Mock com.polymarket.tma.trading.relayer.RelayerClient relayer;
+    /** English request: the service passes items through without touching Gamma or Redis. */
+    @org.mockito.Spy com.polymarket.tma.market.i18n.MarketTranslationService translations =
+            new com.polymarket.tma.market.i18n.MarketTranslationService(null, null);
 
     @InjectMocks PositionsController controller;
 
@@ -50,7 +53,7 @@ class PositionsControllerTest {
 
         AuthPrincipal principal = new AuthPrincipal(7L, null);
 
-        StepVerifier.create(controller.list(principal))
+        StepVerifier.create(controller.list(principal, null))
                 .assertNext(out -> {
                     assertThat(out).hasSize(2);
                     assertThat(out.get(0).favorite()).isTrue();
@@ -69,7 +72,7 @@ class PositionsControllerTest {
         lenient().when(client.getPositions(any())).thenReturn(Mono.empty());
 
         AuthPrincipal principal = new AuthPrincipal(7L, null);
-        assertThat(catching(() -> controller.list(principal)))
+        assertThat(catching(() -> controller.list(principal, null)))
                 .hasMessageContaining("Connect wallet");
     }
 

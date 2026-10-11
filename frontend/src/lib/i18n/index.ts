@@ -22,3 +22,11 @@ export function t(key: MessageKey, vars?: Vars): string {
   return translate(useLocaleStore.getState().locale, key, vars);
 }
 export { Trans } from './Trans';
+
+/** Polymarket outcomes are English; translate the common binary ones, keep names ("Texas") as-is. */
+export function outcomeText(raw: string | null | undefined, tr: TFunction): string {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === 'yes') return tr('common.yes');
+  if (v === 'no') return tr('common.no');
+  return raw ?? '';
+}
