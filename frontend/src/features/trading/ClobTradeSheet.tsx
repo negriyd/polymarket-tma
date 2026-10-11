@@ -11,6 +11,7 @@ import { Trans, useT, type MessageKey } from '@/lib/i18n';
 import { useWallet } from '@/features/wallet/useWallet';
 import { signAndRelayBatch } from '@/features/wallet/relayerTx';
 import { hapticImpact } from '@/lib/telegram/webApp';
+import { ShareButton } from '@/features/share/ShareButton';
 
 type OutcomeSide = 'yes' | 'no';
 
@@ -329,6 +330,7 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
           )}
           {error && <p className="text-sm text-rose-500">{error}</p>}
           {success && <p className="text-sm text-emerald-500">{success}</p>}
+          {success && <ShareButton marketKey={market.id ?? market.conditionId} side={outcome} />}
 
           <p className="text-[10px] leading-snug text-tg-hint">
             {t('trade.note')}

@@ -11,6 +11,7 @@ import { FavoritesPage } from '@/pages/FavoritesPage';
 import { WalletPage } from '@/pages/WalletPage';
 import { WalletProvider } from '@/features/wallet/PrivyProvider';
 import { useT } from '@/lib/i18n';
+import { DeepLinkHandler } from '@/features/share/DeepLinkHandler';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,6 +60,7 @@ export function App() {
       <WalletProvider>
         <BrowserRouter>
           <AuthGate>
+            <DeepLinkHandler />
             <Routes>
               <Route element={<AppLayout />}>
                 <Route index element={<HomePage />} />

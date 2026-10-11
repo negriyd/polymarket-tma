@@ -9,6 +9,7 @@ import type {
   FeeConfig,
   Market,
   MarketEvent,
+  MarketShare,
   MarketList,
   MarketComment,
   OrderSignatureType,
@@ -53,6 +54,9 @@ export const api = {
 
   getMarket: (marketKey: string) =>
     http.get<Market>(`/api/markets/${marketKey}`).then((r) => r.data),
+
+  shareMarket: (body: { marketKey: string; side?: 'yes' | 'no' }) =>
+    http.post<MarketShare>('/api/share/market', body).then((r) => r.data),
 
   getMarketEvent: (marketKey: string) =>
     http.get<MarketEvent>(`/api/markets/${encodeURIComponent(marketKey)}/event`).then((r) => r.data),

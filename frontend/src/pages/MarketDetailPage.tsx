@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '@/lib/api/endpoints';
 import { Spinner } from '@/components/Spinner';
 import { ErrorView } from '@/components/ErrorView';
@@ -14,9 +14,11 @@ import { EventOptions } from '@/features/markets/EventOptions';
 import { PriceChart } from '@/features/markets/PriceChart';
 import type { Market } from '@/lib/api/types';
 import { outcomeText, Trans, useLocale, useT } from '@/lib/i18n';
+import { ShareButton } from '@/features/share/ShareButton';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
+  const friendPick = (useLocation().state as { friendPick?: 'yes' | 'no' } | null)?.friendPick;
   const t = useT();
   const locale = useLocale();
   const qc = useQueryClient();
@@ -148,6 +150,7 @@ export function MarketDetailPage() {
             <h1 className="break-words text-xl font-semibold leading-snug">{m.question}</h1>
             {m.category && <p className="mt-1 text-xs uppercase tracking-wide text-tg-hint">{m.category}</p>}
           </div>
+          <ShareButton marketKey={m.id ?? m.conditionId} compact />
           <button
             onClick={() => {
               hapticImpact('medium');
@@ -161,6 +164,12 @@ export function MarketDetailPage() {
           </button>
         </div>
       </header>
+
+      {friendPick && (
+        <p className="rounded-xl bg-tg-button/15 px-3 py-2 text-sm text-tg-text">
+          {t('share.friendPick', { outcome: t(friendPick === 'yes' ? 'common.yes' : 'common.no') })}
+        </p>
+      )}
 
       {privyTradeHint && (
         <div className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint ring-1 ring-tg-hint/20">

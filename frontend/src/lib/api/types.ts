@@ -60,6 +60,12 @@ export interface MarketEvent {
   seriesEvents?: SeriesEvent[] | null;
 }
 
+export interface MarketShare {
+  link: string;
+  text: string;
+  preparedMessageId?: string | null;
+}
+
 export interface SeriesEvent {
   id: string;
   title: string;
