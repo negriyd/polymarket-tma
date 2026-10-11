@@ -13,7 +13,7 @@
 
 > Какое-то время живу с Polymarket прямо в Telegram — делюсь впечатлениями 🔮
 >
-> Сделал для себя мини-приложение для Polymarket (это рынок прогнозов, где цена = вероятность события) и в итоге открываю его чаще, чем новости. Утром листаю: какие шансы у кандидатов, кто фаворит в матче, что рынок думает про биткоин. Всё на русском, даже названия рынков, и с графиками — видно, как вероятность менялась за неделю.
+> Сделал для себя мини-приложение для Polymarket (это рынок прогнозов, где цена = вероятность события) и в итоге открываю его чаще, чем новости. Утром листаю: какие шансы у кандидатов, кто фаворит в матче, что рынок думает про биткоин. Приложение на 6 языках — русском, украинском, английском, испанском, португальском и китайском, — переводятся даже названия рынков. И с графиками — видно, как вероятность менялась за неделю.
 >
 > Больше всего зацепили **прогнозы без денег**. Жмёшь «Да» или «Нет», а когда событие случается, бот пишет в личку, угадал ли ты. Ведётся счёт точности — у меня пока [N из M], и это затягивает сильнее, чем кажется 😅 Плюс по понедельникам смотрю «Прогнозиста недели».
 >
@@ -33,7 +33,7 @@
 
 > I've been using Polymarket right inside Telegram for a while — here's how it's going 🔮
 >
-> I built a small Telegram app for Polymarket (the prediction market where price = probability) and ended up opening it more often than the news. In the morning I scroll through the odds: who's leading the election, who's the favourite tonight, what the market thinks about Bitcoin. It's all in my language, market titles included, with charts showing how the odds moved over the week.
+> I built a small Telegram app for Polymarket (the prediction market where price = probability) and ended up opening it more often than the news. In the morning I scroll through the odds: who's leading the election, who's the favourite tonight, what the market thinks about Bitcoin. It speaks 6 languages — English, Spanish, Portuguese, Ukrainian, Russian and Chinese — market titles included, with charts showing how the odds moved over the week.
 >
 > What hooked me most is **free predictions**. Tap Yes or No, and when the event resolves the bot DMs you whether you got it right. It keeps your accuracy — I'm at [N of M] so far, and it's more addictive than it sounds 😅 On Mondays I check the weekly "Top forecaster".
 >
