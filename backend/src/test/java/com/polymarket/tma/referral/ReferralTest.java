@@ -42,7 +42,7 @@ class ReferralTest {
     }
 
     private static ReferralService service(AppUserRepository users, PartnerRepository partners) {
-        return new ReferralService(users, null, new ReferralProperties(2500, Duration.ofDays(365)), partners);
+        return new ReferralService(users, null, new ReferralProperties(2500, 6), partners);
     }
 
     @Test
@@ -57,10 +57,13 @@ class ReferralTest {
     }
 
     @Test
-    void noShareAfterTwelveMonthsOrWithoutReferrerWallet() {
+    void noShareAfterSixMonthsOrWithoutReferrerWallet() {
         AppUserRepository users = mock(AppUserRepository.class);
-        when(users.findById(2L)).thenReturn(Optional.of(user(2, 1L, Instant.now().minus(Duration.ofDays(400)), "0xb")));
-        assertThat(service(users).split(2L, BigInteger.valueOf(100_000))).isEmpty();
+        when(users.findById(1L)).thenReturn(Optional.of(user(1, null, null, "0xReferrerEoa")));
+        when(users.findById(2L)).thenReturn(Optional.of(user(2, 1L, Instant.now().minus(Duration.ofDays(190)), "0xb")));
+        assertThat(service(users).split(2L, BigInteger.valueOf(100_000))).as("past 6 months").isEmpty();
+        when(users.findById(4L)).thenReturn(Optional.of(user(4, 1L, Instant.now().minus(Duration.ofDays(170)), "0xd")));
+        assertThat(service(users).split(4L, BigInteger.valueOf(100_000))).as("within 6 months").isPresent();
 
         when(users.findById(3L)).thenReturn(Optional.of(user(3, 1L, Instant.now(), "0xc")));
         when(users.findById(1L)).thenReturn(Optional.of(user(1, null, null, null)));

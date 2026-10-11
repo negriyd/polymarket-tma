@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +26,7 @@ import reactor.core.publisher.Mono;
  *   GET  /api/operator/partners                         -> partners with their terms and totals (operator only)
  *   POST /api/operator/partners      {user, shareBps, months?, note?, publicName?} -> make a user a partner
  *   PUT  /api/operator/partners/{id} {shareBps, months?, active, note?, publicName?} -> change terms / pause
+ *   DELETE /api/operator/partners/{id}              -> remove the role (back to default referral terms)
  *   GET  /api/partner/me                        -> partner cabinet: terms, link, funnel per tag
  * </pre>
  * {@code months} null = lifetime.
@@ -80,6 +82,12 @@ public class PartnerController {
         PartnerService.Partner p = service.update(userId, req.shareBps(), req.months(), req.active(), req.note(),
                 req.publicName());
         return bot.username().map(name -> new PartnerView(p, link(name, p.code())));
+    }
+
+    @DeleteMapping("/api/operator/partners/{userId}")
+    public void remove(@AuthenticationPrincipal AuthPrincipal principal, @PathVariable long userId) {
+        requireOperator(principal);
+        service.remove(userId);
     }
 
     @GetMapping("/api/partner/me")

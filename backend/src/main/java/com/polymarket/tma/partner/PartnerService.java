@@ -110,6 +110,17 @@ public class PartnerService {
         return toPartner(partners.find(userId).orElseThrow());
     }
 
+    /**
+     * Removes the partner role: the user keeps inviting with the default referral terms, which also
+     * apply from now on to everyone they invited. Payouts already made stay as they are.
+     */
+    @Transactional
+    public void remove(long userId) {
+        if (!partners.delete(userId)) {
+            throw ApiException.notFound("PARTNER_NOT_FOUND", "No such partner");
+        }
+    }
+
     public Cabinet cabinet(long userId) {
         PartnerRepository.Terms terms = partners.findActive(userId)
                 .orElseThrow(() -> ApiException.forbidden("NOT_PARTNER", "Only partners have a partner cabinet"));

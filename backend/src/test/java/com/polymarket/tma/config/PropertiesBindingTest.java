@@ -3,7 +3,6 @@ package com.polymarket.tma.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.polymarket.tma.referral.ReferralProperties;
-import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -33,9 +32,9 @@ class PropertiesBindingTest {
 
     @Test
     void referralsBind() {
-        var r = binder(Map.of("app.referrals.share-bps", "2500", "app.referrals.duration", "P365D"))
+        var r = binder(Map.of("app.referrals.share-bps", "2500", "app.referrals.months", "6"))
                 .bind("app.referrals", ReferralProperties.class).get();
         assertThat(r.shareBps()).isEqualTo(2500);
-        assertThat(r.duration()).isEqualTo(Duration.ofDays(365));
+        assertThat(r.months()).isEqualTo(6);
     }
 }

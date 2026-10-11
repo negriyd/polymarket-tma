@@ -145,6 +145,11 @@ function PartnerCard({ view }: { view: PartnerView }) {
     publicName: p.publicName ?? '',
   });
   const body = toInput(terms);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const remove = useMutation({
+    mutationFn: () => api.removePartner(p.userId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['operator-partners'] }),
+  });
   const save = useMutation({
     mutationFn: () => api.updatePartner(p.userId, { ...body!, active }),
     onSuccess: () => {
@@ -200,6 +205,39 @@ function PartnerCard({ view }: { view: PartnerView }) {
             >
               {t('opp.cancel')}
             </button>
+          </div>
+          <div className="space-y-1 border-t border-tg-hint/10 pt-2">
+            {confirmRemove ? (
+              <>
+                <p className="text-[11px] leading-snug text-tg-hint">{t('opp.removeHint')}</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate()}
+                    className="flex-1 rounded-lg bg-rose-500 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {t('opp.removeYes')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRemove(false)}
+                    className="flex-1 rounded-lg bg-tg-bg py-2 text-sm text-tg-text"
+                  >
+                    {t('opp.cancel')}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmRemove(true)}
+                className="w-full py-1 text-xs font-medium text-rose-500"
+              >
+                {t('opp.remove')}
+              </button>
+            )}
+            {remove.isError && <p className="text-xs text-rose-500">{formatError(remove.error)}</p>}
           </div>
         </div>
       ) : (

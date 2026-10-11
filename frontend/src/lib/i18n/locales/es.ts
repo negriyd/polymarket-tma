@@ -434,4 +434,7 @@ export const es: Messages = {
   'sell.note': 'Orden límite de venta en Polymarket; el dinero llega en pUSD a tu billetera de trading. Sin comisión de plataforma al vender. Una posición vendida antes del resultado no cuenta como apuesta ganada ni perdida.',
   'sell.submit': 'Vender {shares} acciones',
   'sell.closed': 'El mercado está cerrado: espera el resultado.',
+  'opp.remove': 'Eliminar socio',
+  'opp.removeYes': 'Sí, eliminar',
+  'opp.removeHint': 'Pasará a ser un usuario normal: desde ahora recibirá la parte de referido habitual por sus invitados (lo ya pagado no cambia). Podrás añadirlo de nuevo.',
 };

@@ -454,4 +454,7 @@ export const en = {
   'sell.note': 'Limit sell order on Polymarket; proceeds arrive in pUSD on your trading wallet. No platform fee on sells. A position sold before the result does not count as a won or lost bet.',
   'sell.submit': 'Sell {shares} shares',
   'sell.closed': 'Trading on this market is closed — wait for the result.',
+  'opp.remove': 'Remove partner',
+  'opp.removeYes': 'Yes, remove',
+  'opp.removeHint': 'They become a regular user: users they invited earn them the default referral share from now on (paid out amounts stay). You can add them again later.',
 } as const;

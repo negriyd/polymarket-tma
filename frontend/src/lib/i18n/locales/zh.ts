@@ -434,4 +434,7 @@ export const zh: Messages = {
   'sell.note': 'Polymarket 限价卖单；资金以 pUSD 到账交易钱包。卖出不收平台手续费。结果前卖出的持仓不计为赢或输的下注。',
   'sell.submit': '卖出 {shares} 股',
   'sell.closed': '该市场已停止交易——请等待结果。',
+  'opp.remove': '移除合作伙伴',
+  'opp.removeYes': '确认移除',
+  'opp.removeHint': '对方将成为普通用户：此后其邀请的用户按默认推荐分成计算（已支付部分不变）。之后可重新添加。',
 };

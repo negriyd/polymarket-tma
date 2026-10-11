@@ -113,7 +113,7 @@ public class ReferralService {
         Instant until = partner.isPresent()
                 ? (partner.get().months() == null ? null
                         : referee.getReferredAt().atOffset(ZoneOffset.UTC).plusMonths(partner.get().months()).toInstant())
-                : referee.getReferredAt().plus(props.duration());
+                : referee.getReferredAt().atOffset(ZoneOffset.UTC).plusMonths(props.months()).toInstant();
         if (shareBps <= 0 || (until != null && until.isBefore(Instant.now()))) {
             return Optional.empty();
         }
@@ -133,7 +133,7 @@ public class ReferralService {
                 java.math.BigDecimal.class, userId);
         Optional<PartnerRepository.Terms> partner = partners.findActive(userId);
         int shareBps = partner.map(PartnerRepository.Terms::shareBps).orElse(props.shareBps());
-        Integer months = partner.isPresent() ? partner.get().months() : Integer.valueOf((int) (props.duration().toDays() / 30));
+        Integer months = partner.isPresent() ? partner.get().months() : Integer.valueOf(props.months());
         return new Summary(code, invited == null ? 0 : invited,
                 earned == null ? BigInteger.ZERO : earned.toBigInteger(),
                 shareBps / 100, months == null ? 0 : months, months == null, partner.isPresent());

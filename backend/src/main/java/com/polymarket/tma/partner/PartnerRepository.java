@@ -49,6 +49,11 @@ public class PartnerRepository {
                 """, userId, shareBps, months, active, note, publicName);
     }
 
+    /** @return whether a row was removed */
+    public boolean delete(long userId) {
+        return jdbc.update("DELETE FROM partner WHERE user_id = ?", userId) > 0;
+    }
+
     private static Terms map(ResultSet rs, int i) throws SQLException {
         int months = rs.getInt("months");
         return new Terms(rs.getLong("user_id"), rs.getInt("share_bps"), rs.wasNull() ? null : months,

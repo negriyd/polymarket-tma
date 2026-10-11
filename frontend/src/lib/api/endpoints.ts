@@ -80,6 +80,7 @@ export const api = {
     http.post<PartnerView>('/api/operator/partners', body).then((r) => r.data),
   updatePartner: (userId: number, body: PartnerTermsInput & { active: boolean }) =>
     http.put<PartnerView>(`/api/operator/partners/${userId}`, body).then((r) => r.data),
+  removePartner: (userId: number) => http.delete(`/api/operator/partners/${userId}`).then(() => undefined),
   getPartnerCabinet: () => http.get<PartnerCabinet>('/api/partner/me').then((r) => r.data),
 
   getCurrentAuthor: (code?: string | null, conditionId?: string) =>

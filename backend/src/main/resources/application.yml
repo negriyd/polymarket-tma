@@ -72,8 +72,8 @@ app:
   referrals:
     # Referrer's share of the platform trading fee (2500 = 25% of the fee).
     share-bps: ${REFERRAL_SHARE_BPS:2500}
-    # How long after the invited user's sign-up the referrer earns.
-    duration: ${REFERRAL_DURATION:P365D}
+    # How long after the invited user's sign-up the referrer earns, in calendar months (partners: own terms).
+    months: ${REFERRAL_MONTHS:6}
   polymarket:
     gamma-base-url: https://gamma-api.polymarket.com
     clob-base-url: https://clob.polymarket.com
