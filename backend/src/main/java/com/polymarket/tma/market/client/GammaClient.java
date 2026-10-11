@@ -5,8 +5,8 @@ import com.polymarket.tma.config.AppProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.polymarket.tma.market.dto.CommentDto;
 import com.polymarket.tma.market.dto.EventDto;
+import com.polymarket.tma.market.dto.SeriesDto;
 import com.polymarket.tma.market.dto.MarketDto;
-import com.polymarket.tma.market.dto.PriceHistoryDto;
 import com.polymarket.tma.market.dto.gamma.PublicSearchResponse;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -166,6 +166,17 @@ public class GammaClient {
                 .doOnError(e -> log.warn("Gamma listMarketsBySlug failed: {}", e.toString()));
     }
 
+    /** Events of a recurring series ("…continues through…?" each month); without their markets. */
+    public Mono<SeriesDto> getSeries(String seriesId) {
+        return client.get()
+                .uri(uri -> uri.path("/series/{id}").build(seriesId))
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapError)
+                .bodyToMono(SeriesDto.class)
+                .retryWhen(retrySpec("getSeries"))
+                .doOnError(e -> log.warn("Gamma getSeries({}) failed: {}", seriesId, e.toString()));
+    }
+
     /** Event with its markets; titles in {@code locale} when given (null = English). */
     public Mono<EventDto> getEvent(String eventId, String locale) {
         return client.get()
@@ -206,19 +217,6 @@ public class GammaClient {
                 .bodyToMono(MarketDto.class)
                 .retryWhen(retrySpec("getMarket"))
                 .doOnError(e -> log.warn("Gamma getMarket({}) failed: {}", conditionId, e.toString()));
-    }
-
-    public Mono<PriceHistoryDto> getPriceHistory(String tokenId, String interval) {
-        return client.get()
-                .uri(uri -> uri.path("/prices-history")
-                        .queryParam("market", tokenId)
-                        .queryParam("interval", interval)
-                        .build())
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, this::mapError)
-                .bodyToMono(PriceHistoryDto.class)
-                .retryWhen(retrySpec("getPriceHistory"))
-                .doOnError(e -> log.warn("Gamma getPriceHistory({}) failed: {}", tokenId, e.toString()));
     }
 
     /**

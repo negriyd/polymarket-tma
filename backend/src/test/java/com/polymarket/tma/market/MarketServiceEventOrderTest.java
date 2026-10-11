@@ -42,4 +42,29 @@ class MarketServiceEventOrderTest {
                 .extracting(MarketDto::groupItemTitle)
                 .containsExactly("Newsom", "Ocasio-Cortez", "Buttigieg");
     }
+
+    @Test
+    void resolvedMarketsAreKeptSeparatelyLatestFirst() {
+        var event = new EventDto("1", "s", "Ceasefire by…?", List.of(
+                market("Aug 22", "2026-08-22T00:00:00Z", "1", true),
+                market("Oct 12", "2026-10-12T00:00:00Z", "0.96", false),
+                market("Aug 31", "2026-08-31T00:00:00Z", "0", true)));
+
+        var out = MarketService.openMarketsInOrder(event);
+        assertThat(out.markets()).extracting(MarketDto::groupItemTitle).containsExactly("Oct 12");
+        assertThat(out.resolved()).extracting(MarketDto::groupItemTitle).containsExactly("Aug 31", "Aug 22");
+    }
+
+    @Test
+    void seriesChipsArePastThenOpenInDateOrder() {
+        var events = List.of(
+                new com.polymarket.tma.market.dto.SeriesDto.Event("a", "Jul", Instant.parse("2026-07-31T00:00:00Z"), true),
+                new com.polymarket.tma.market.dto.SeriesDto.Event("c", "Nov", Instant.parse("2026-11-03T00:00:00Z"), false),
+                new com.polymarket.tma.market.dto.SeriesDto.Event("b", "Oct", Instant.parse("2026-10-31T00:00:00Z"), false),
+                new com.polymarket.tma.market.dto.SeriesDto.Event("z", "Sep", Instant.parse("2026-09-30T00:00:00Z"), true));
+
+        assertThat(MarketService.pickSeriesEvents(events, "b"))
+                .extracting(com.polymarket.tma.market.dto.SeriesDto.Event::id)
+                .containsExactly("a", "z", "b", "c");
+    }
 }

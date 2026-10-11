@@ -11,6 +11,7 @@ import { isWalletConfigured } from '@/features/wallet/useWallet';
 import { MarketTradeSheet } from '@/features/trading/MarketTradeSheet';
 import { ClobTradeSheet } from '@/features/trading/ClobTradeSheet';
 import { EventOptions } from '@/features/markets/EventOptions';
+import { PriceChart } from '@/features/markets/PriceChart';
 import type { Market } from '@/lib/api/types';
 import { outcomeText, Trans, useLocale, useT } from '@/lib/i18n';
 
@@ -184,7 +185,10 @@ export function MarketDetailPage() {
         </div>
       )}
 
-      {event.data && event.data.markets.length > 1 && (
+      {event.data &&
+        (event.data.markets.length > 1 ||
+          (event.data.seriesEvents?.length ?? 0) > 1 ||
+          (event.data.resolved?.length ?? 0) > 0) && (
         <EventOptions
           event={event.data}
           currentConditionId={m.conditionId}
@@ -250,6 +254,8 @@ export function MarketDetailPage() {
             onClose={() => setTrade(null)}
           />
         ))}
+
+      {yesTok && <PriceChart conditionId={m.conditionId} tokenId={yesTok} currentPrice={yesPrice} />}
 
       <section className="grid grid-cols-3 gap-2">
         <Stat label={t('market.vol24h')} value={fmt(m.volume24hr ?? m.volume24h)} />

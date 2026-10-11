@@ -52,7 +52,22 @@ export interface MarketEvent {
   id: string;
   slug?: string;
   title: string;
+  /** Open markets, in display order. */
   markets: Market[];
+  /** Closed markets, latest first. */
+  resolved?: Market[] | null;
+  /** Other events of the same series (other months); includes the current one. */
+  seriesEvents?: SeriesEvent[] | null;
+}
+
+export interface SeriesEvent {
+  id: string;
+  title: string;
+  endDate?: string | null;
+  closed: boolean;
+  current: boolean;
+  /** Market to open for this event; null for the current one. */
+  marketKey?: string | null;
 }
 
 export interface MarketList {

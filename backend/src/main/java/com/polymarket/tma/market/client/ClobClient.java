@@ -3,6 +3,7 @@ package com.polymarket.tma.market.client;
 import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.market.dto.OrderbookDto;
+import com.polymarket.tma.market.dto.PriceHistoryDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import org.slf4j.Logger;
@@ -48,6 +49,30 @@ public class ClobClient {
                                 && (api.getCode().startsWith("CLOB_HTTP_5")
                                     || api.getCode().equals("CLOB_HTTP_429"))))
                 .doOnError(e -> log.warn("CLOB market slug({}) failed: {}", conditionId, e.toString()));
+    }
+
+    /**
+     * Price history of one outcome token. {@code fidelity} is the bucket size in minutes; CLOB returns
+     * nothing for 1w / 1m / max without it.
+     */
+    public Mono<PriceHistoryDto> getPriceHistory(String tokenId, String interval, int fidelity) {
+        return client.get()
+                .uri(uri -> uri.path("/prices-history")
+                        .queryParam("market", tokenId)
+                        .queryParam("interval", interval)
+                        .queryParam("fidelity", fidelity)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, resp -> resp.bodyToMono(String.class).defaultIfEmpty("")
+                        .map(body -> ApiException.upstream("CLOB_HTTP_" + resp.statusCode().value(),
+                                "CLOB error: " + resp.statusCode().value() + " " + body)))
+                .bodyToMono(PriceHistoryDto.class)
+                .retryWhen(Retry.backoff(2, Duration.ofMillis(200))
+                        .maxBackoff(Duration.ofSeconds(2))
+                        .jitter(0.5)
+                        .filter(t -> t instanceof ApiException api
+                                && (api.getCode().startsWith("CLOB_HTTP_5") || api.getCode().equals("CLOB_HTTP_429"))))
+                .doOnError(e -> log.warn("CLOB prices-history({}, {}) failed: {}", tokenId, interval, e.toString()));
     }
 
     public Mono<OrderbookDto> getOrderbook(String tokenId) {
