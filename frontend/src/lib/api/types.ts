@@ -60,6 +60,19 @@ export interface MarketEvent {
   seriesEvents?: SeriesEvent[] | null;
 }
 
+export interface OperatorStats {
+  users: number;
+  usersLast7d: number;
+  usersWithWallet: number;
+  referredUsers: number;
+  bets: number;
+  volumeUsdc: string;
+  avgBetUsdc: string;
+  feePayments: number;
+  feesUsdc: string;
+  referralUsdc: string;
+}
+
 export interface ReferralInfo {
   code: string;
   link: string;

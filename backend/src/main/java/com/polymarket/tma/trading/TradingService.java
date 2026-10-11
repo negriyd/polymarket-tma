@@ -46,6 +46,7 @@ public class TradingService {
     private final MarketService marketService;
     private final DepositWalletService depositWallets;
     private final ReferralService referrals;
+    private final com.polymarket.tma.fees.FeeLedger feeLedger;
 
     public TradingService(OrderBuilder builder,
                           PendingOrderCache pending,
@@ -56,8 +57,10 @@ public class TradingService {
                           FeeService fees,
                           MarketService marketService,
                           DepositWalletService depositWallets,
-                          ReferralService referrals) {
+                          ReferralService referrals,
+                          com.polymarket.tma.fees.FeeLedger feeLedger) {
         this.referrals = referrals;
+        this.feeLedger = feeLedger;
         this.builder = builder;
         this.pending = pending;
         this.userRepo = userRepo;
@@ -112,9 +115,7 @@ public class TradingService {
                 transfers.put(fee.recipient(), fee.amountMicroUsdc());
             }
             feeBatch = depositWallets.prepareCollateralTransfers(userId, "TRADING_FEE", transfers);
-            if (split != null) {
-                referrals.rememberPendingReward(feeBatch.batchHash(), userId, split);
-            }
+            feeLedger.rememberPending(feeBatch.batchHash(), userId, transfers.get(fee.recipient()), split);
         }
         return new OrderDtos.TypedDataResponse(
                 built.orderHash(),

@@ -9,6 +9,7 @@ import { api } from '@/lib/api/endpoints';
 import type { Bet } from '@/lib/api/types';
 import { useLocale, useT } from '@/lib/i18n';
 import { ReferralSection } from '@/features/share/ReferralSection';
+import { Link } from 'react-router-dom';
 
 function statusColor(status: string): string {
   switch (status) {
@@ -64,6 +65,13 @@ export function WalletPanel() {
     refetchInterval: 30_000,
   });
 
+  const operator = useQuery({
+    queryKey: ['operator-access'],
+    queryFn: api.getOperatorAccess,
+    enabled: !!w.address,
+    staleTime: 5 * 60_000,
+  });
+
   const positions = useQuery({
     queryKey: ['positions'],
     queryFn: api.listPositions,
@@ -103,6 +111,16 @@ export function WalletPanel() {
   return (
     <div className="max-w-full min-w-0 space-y-4 pt-2">
       <h1 className="text-2xl font-semibold">{t('wallet.title')}</h1>
+
+      {operator.data?.operator && (
+        <Link
+          to="/operator"
+          className="flex items-center justify-between rounded-xl bg-tg-button/15 px-4 py-3 text-sm font-semibold text-tg-text"
+        >
+          📊 {t('op.title')}
+          <span className="text-tg-hint">›</span>
+        </Link>
+      )}
 
       {!w.authenticated && (
         <button

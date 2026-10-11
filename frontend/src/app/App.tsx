@@ -12,6 +12,7 @@ import { WalletPage } from '@/pages/WalletPage';
 import { WalletProvider } from '@/features/wallet/PrivyProvider';
 import { useT } from '@/lib/i18n';
 import { DeepLinkHandler } from '@/features/share/DeepLinkHandler';
+import { OperatorStatsPage } from '@/pages/OperatorStatsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,6 +69,7 @@ export function App() {
                 <Route path="markets/:marketId" element={<MarketDetailPage />} />
                 <Route path="favorites" element={<FavoritesPage />} />
                 <Route path="wallet" element={<WalletPage />} />
+                <Route path="operator" element={<OperatorStatsPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>

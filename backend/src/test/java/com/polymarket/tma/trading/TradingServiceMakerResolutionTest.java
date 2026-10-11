@@ -51,6 +51,7 @@ class TradingServiceMakerResolutionTest {
     @Mock private FeeService fees;
     @Mock private MarketService marketService;
     @Mock private com.polymarket.tma.referral.ReferralService referrals;
+    @Mock private com.polymarket.tma.fees.FeeLedger feeLedger;
     @Mock private DepositWalletService depositWallets;
 
     private TradingService service;
@@ -71,7 +72,7 @@ class TradingServiceMakerResolutionTest {
         // Default: regular (non-negRisk) markets unless overridden in a test.
         lenient().when(marketService.get(any())).thenReturn(Mono.just(stubMarket(false)));
 
-        service = new TradingService(builder, pending, userRepo, auditRepo, clob, credentialsStore, fees, marketService, depositWallets, referrals);
+        service = new TradingService(builder, pending, userRepo, auditRepo, clob, credentialsStore, fees, marketService, depositWallets, referrals, feeLedger);
     }
 
     @Test
@@ -170,7 +171,7 @@ class TradingServiceMakerResolutionTest {
         assertThat(transfers.getValue()).containsExactly(
                 Map.entry(platform, java.math.BigInteger.valueOf(75_000)),
                 Map.entry(referrerWallet, java.math.BigInteger.valueOf(25_000)));
-        verify(referrals).rememberPendingReward("0xbatch", 1L, split);
+        verify(feeLedger).rememberPending("0xbatch", 1L, java.math.BigInteger.valueOf(75_000), split);
     }
 
     @Test

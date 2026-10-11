@@ -11,6 +11,7 @@ import type {
   MarketEvent,
   MarketShare,
   ReferralInfo,
+  OperatorStats,
   MarketList,
   MarketComment,
   OrderSignatureType,
@@ -55,6 +56,9 @@ export const api = {
 
   getMarket: (marketKey: string) =>
     http.get<Market>(`/api/markets/${marketKey}`).then((r) => r.data),
+
+  getOperatorAccess: () => http.get<{ operator: boolean }>('/api/operator/access').then((r) => r.data),
+  getOperatorStats: () => http.get<OperatorStats>('/api/operator/stats').then((r) => r.data),
 
   getMyReferrals: () => http.get<ReferralInfo>('/api/referrals/me').then((r) => r.data),
 

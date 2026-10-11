@@ -35,7 +35,7 @@ class ReferralTest {
     }
 
     private static ReferralService service(AppUserRepository users) {
-        return new ReferralService(users, null, null, new ReferralProperties(2500, Duration.ofDays(365)));
+        return new ReferralService(users, null, new ReferralProperties(2500, Duration.ofDays(365)));
     }
 
     @Test

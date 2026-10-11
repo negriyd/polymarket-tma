@@ -2,24 +2,19 @@ package com.polymarket.tma.referral;
 
 import com.polymarket.tma.auth.entity.AppUser;
 import com.polymarket.tma.auth.repo.AppUserRepository;
-import com.polymarket.tma.trading.relayer.DepositWalletBatchSubmitted;
 import java.math.BigInteger;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Referral program: invite codes, sign-up attribution from {@code startapp} links, the referrer's
- * share of trading fees, and launch tracking per channel tag.
+ * share of trading fees, and launch tracking per channel tag. Fee batches are booked by {@code FeeLedger}.
  */
 @Service
 public class ReferralService {
@@ -27,18 +22,14 @@ public class ReferralService {
     private static final Logger log = LoggerFactory.getLogger(ReferralService.class);
     private static final String ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final Duration PENDING_REWARD_TTL = Duration.ofMinutes(15);
 
     private final AppUserRepository users;
     private final JdbcTemplate jdbc;
-    private final RedisTemplate<String, Object> redis;
     private final ReferralProperties props;
 
-    public ReferralService(AppUserRepository users, JdbcTemplate jdbc, RedisTemplate<String, Object> redis,
-                           ReferralProperties props) {
+    public ReferralService(AppUserRepository users, JdbcTemplate jdbc, ReferralProperties props) {
         this.users = users;
         this.jdbc = jdbc;
-        this.redis = redis;
         this.props = props;
     }
 
@@ -111,39 +102,6 @@ public class ReferralService {
                 .map(r -> new Split(r.getId(), r.getWalletAddress(), cut));
     }
 
-    /** Remembers the referrer's cut of a prepared fee batch until the user submits it. */
-    public void rememberPendingReward(String batchHash, long refereeId, Split split) {
-        try {
-            redis.opsForValue().set(pendingKey(batchHash), Map.of(
-                    "referrerId", split.referrerId(),
-                    "refereeId", refereeId,
-                    "amount", split.referrerAmount().toString()), PENDING_REWARD_TTL);
-        } catch (RuntimeException e) {
-            log.warn("Could not remember referral reward for batch {}: {}", batchHash, e.toString());
-        }
-    }
-
-    /** A submitted fee batch that carried a referrer's cut becomes a recorded reward. */
-    @EventListener
-    public void onBatchSubmitted(DepositWalletBatchSubmitted event) {
-        if (!"TRADING_FEE".equals(event.purpose())) {
-            return;
-        }
-        try {
-            Object raw = redis.opsForValue().get(pendingKey(event.batchHash()));
-            if (!(raw instanceof Map<?, ?> m)) {
-                return;
-            }
-            redis.delete(pendingKey(event.batchHash()));
-            jdbc.update("INSERT INTO referral_reward (referrer_id, referee_id, amount_micro, relayer_tx_id) "
-                            + "VALUES (?, ?, ?, ?)",
-                    ((Number) m.get("referrerId")).longValue(), ((Number) m.get("refereeId")).longValue(),
-                    new java.math.BigDecimal(String.valueOf(m.get("amount"))), event.relayerTxId());
-        } catch (RuntimeException e) {
-            log.warn("Could not record referral reward for batch {}: {}", event.batchHash(), e.toString());
-        }
-    }
-
     public Summary summary(long userId) {
         String code = codeOf(userId);
         Integer invited = jdbc.queryForObject("SELECT COUNT(*) FROM app_user WHERE referred_by = ?",
@@ -154,10 +112,6 @@ public class ReferralService {
         return new Summary(code, invited == null ? 0 : invited,
                 earned == null ? BigInteger.ZERO : earned.toBigInteger(),
                 props.shareBps() / 100, props.duration().toDays() / 30);
-    }
-
-    private static String pendingKey(String batchHash) {
-        return "pm:refreward:" + batchHash;
     }
 
     private static String randomCode() {
