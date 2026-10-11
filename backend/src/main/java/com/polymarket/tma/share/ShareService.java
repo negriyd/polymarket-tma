@@ -13,7 +13,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.util.HtmlUtils;
 import reactor.core.publisher.Mono;
 
 /**
@@ -120,17 +119,25 @@ public class ShareService {
         return sb.toString();
     }
 
+    /**
+     * Escapes text for Telegram's HTML parse mode, which knows only {@code &lt; &gt; &amp; &quot;}
+     * (and numeric references): named entities like {@code &middot;} would show up literally.
+     */
+    static String escape(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
     /** Telegram inline result for a market card: odds text, image preview and an "Open market" button. */
     public static Map<String, Object> card(MarketDto m, String side, ShareTexts.Texts t, String link) {
-        StringBuilder html = new StringBuilder("📊 <b>").append(HtmlUtils.htmlEscape(m.question())).append("</b>");
+        StringBuilder html = new StringBuilder("📊 <b>").append(escape(m.question())).append("</b>");
         String odds = oddsLine(m, t);
         if (!odds.isEmpty()) {
-            html.append("\n").append(HtmlUtils.htmlEscape(odds));
+            html.append("\n").append(escape(odds));
         }
         if (side != null) {
-            html.append("\n\n").append(HtmlUtils.htmlEscape(
+            html.append("\n\n").append(escape(
                     String.format(t.myPick(), "yes".equals(side) ? t.yes() : t.no())))
-                    .append("\n").append(HtmlUtils.htmlEscape(t.yourTurn()));
+                    .append("\n").append(escape(t.yourTurn()));
         }
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("message_text", html.toString());

@@ -34,4 +34,15 @@ class ShareServiceTest {
                         + "Мой прогноз: Да\nА ты как думаешь?");
         assertThat(ShareTexts.of("de")).isEqualTo(ShareTexts.of(null));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void cardTextUsesOnlyEntitiesTelegramUnderstands() {
+        var m = new MarketDto("1", "0xcid", "Will A&B < C?", null, null, null, null, null, null, null, null,
+                true, false, true, false, null, null, null, List.of("Yes", "No"), List.of("1", "2"),
+                List.of("0.96", "0.04"), true);
+        var card = ShareService.card(m, null, ShareTexts.of("ru"), "https://t.me/bot?startapp=m_1");
+        String text = (String) ((java.util.Map<String, Object>) card.get("input_message_content")).get("message_text");
+        assertThat(text).isEqualTo("📊 <b>Will A&amp;B &lt; C?</b>\nДа 96% · Нет 4%");
+    }
 }
