@@ -31,7 +31,7 @@ class GammaClientTest {
         AppProperties props = new AppProperties(
                 new AppProperties.Cors(List.of("*")),
                 new AppProperties.Jwt("0123456789012345678901234567890123", Duration.ofMinutes(15), Duration.ofDays(30), "test"),
-                new AppProperties.Telegram("test-bot", Duration.ofHours(24)),
+                new AppProperties.Telegram("test-bot", Duration.ofHours(24), null, null),
                 new AppProperties.Polymarket(
                         "http://localhost:" + wm.port(),
                         "http://localhost:" + wm.port(),

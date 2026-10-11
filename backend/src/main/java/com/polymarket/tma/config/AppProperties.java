@@ -31,9 +31,7 @@ public record AppProperties(
             String webhookUrl,
             String webhookSecret
     ) {
-        public Telegram(String botToken, Duration initDataTtl) {
-            this(botToken, initDataTtl, null, null);
-        }
+        // No extra constructors: Spring Boot binds records only through a single constructor.
     }
 
     public record Polymarket(
