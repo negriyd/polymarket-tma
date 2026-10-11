@@ -3,13 +3,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatUnits } from 'viem';
 import { api } from '@/lib/api/endpoints';
 import type { BridgeDeposit, FundingOption } from '@/lib/api/types';
+import { useLocale, useT, type TFunction } from '@/lib/i18n';
 
 const IN_FLIGHT = new Set(['DEPOSIT_DETECTED', 'PROCESSING', 'ORIGIN_TX_CONFIRMED', 'SUBMITTED']);
 
-function statusLabel(status: string): { text: string; cls: string } {
-  if (status === 'COMPLETED') return { text: 'Credited', cls: 'text-emerald-500' };
-  if (status === 'FAILED') return { text: 'Failed', cls: 'text-rose-500' };
-  if (IN_FLIGHT.has(status)) return { text: 'In progress', cls: 'text-amber-500' };
+function statusLabel(status: string, t: TFunction): { text: string; cls: string } {
+  if (status === 'COMPLETED') return { text: t('fund.credited'), cls: 'text-emerald-500' };
+  if (status === 'FAILED') return { text: t('fund.failed'), cls: 'text-rose-500' };
+  if (IN_FLIGHT.has(status)) return { text: t('fund.inProgress'), cls: 'text-amber-500' };
   return { text: status, cls: 'text-tg-hint' };
 }
 
@@ -31,6 +32,8 @@ function formatAmount(d: BridgeDeposit, options: FundingOption[]): string {
  */
 export function FundingPanel() {
   const qc = useQueryClient();
+  const t = useT();
+  const locale = useLocale();
   const [selected, setSelected] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -66,16 +69,15 @@ export function FundingPanel() {
     }
   };
 
-  if (funding.isLoading) return <p className="text-xs text-tg-hint">Loading deposit options…</p>;
+  if (funding.isLoading) return <p className="text-xs text-tg-hint">{t('fund.loading')}</p>;
   if (funding.isError || !funding.data) {
-    return <p className="text-xs text-rose-500">Deposit options are unavailable right now.</p>;
+    return <p className="text-xs text-rose-500">{t('fund.unavailable')}</p>;
   }
 
   return (
     <div className="space-y-2">
       <p className="text-[11px] leading-snug text-amber-500">
-        Send only the selected token on the selected network. TON and other networks not listed here
-        are not supported — funds sent there may be lost.
+        {t('fund.warning')}
       </p>
 
       <div className="flex flex-wrap gap-1.5">
@@ -96,24 +98,25 @@ export function FundingPanel() {
       {chosen && (
         <button type="button" onClick={() => void copy(chosen.depositAddress)} className="w-full rounded-lg bg-tg-bg p-2 text-left">
           <span className="block text-[10px] uppercase tracking-wide text-tg-hint">
-            Send {chosen.symbol} on {chosen.chainName}
-            {chosen.minUsd != null ? ` · min $${chosen.minUsd}` : ''} · {copied ? 'copied' : 'tap to copy'}
+            {t('fund.send', { symbol: chosen.symbol, chain: chosen.chainName })}
+            {chosen.minUsd != null ? t('fund.min', { min: chosen.minUsd }) : ''} ·{' '}
+            {copied ? t('common.copied') : t('common.tapToCopy')}
           </span>
           <span className="block break-all font-mono text-sm text-tg-text">{chosen.depositAddress}</span>
-          <span className="mt-1 block break-all text-[10px] text-tg-hint">token {chosen.tokenAddress}</span>
+          <span className="mt-1 block break-all text-[10px] text-tg-hint">{t('fund.token', { address: chosen.tokenAddress })}</span>
         </button>
       )}
 
       {deposits.data && deposits.data.length > 0 && (
         <ul className="space-y-1">
           {deposits.data.slice(0, 5).map((d, i) => {
-            const s = statusLabel(d.status);
+            const s = statusLabel(d.status, t);
             return (
               <li key={`${d.txHash ?? 'pending'}:${i}`} className="flex justify-between gap-2 text-xs">
                 <span className="text-tg-text">
-                  {formatAmount(d, options) || 'Deposit'}
+                  {formatAmount(d, options) || t('fund.deposit')}
                   {d.createdTimeMs ? (
-                    <span className="ml-1 text-tg-hint">{new Date(d.createdTimeMs).toLocaleString()}</span>
+                    <span className="ml-1 text-tg-hint">{new Date(d.createdTimeMs).toLocaleString(locale)}</span>
                   ) : null}
                 </span>
                 <span className={`shrink-0 font-medium ${s.cls}`}>{s.text}</span>
@@ -124,7 +127,7 @@ export function FundingPanel() {
       )}
 
       <p className="text-[10px] leading-snug text-tg-hint">
-        Arrives as pUSD in a few minutes. Amounts below the minimum may not be credited.
+        {t('fund.note')}
       </p>
     </div>
   );

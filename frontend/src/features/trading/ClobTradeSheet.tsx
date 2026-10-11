@@ -5,12 +5,17 @@ import { useSignTypedData, useWallets, type SignTypedDataParams } from '@privy-i
 import { AxiosError } from 'axios';
 import { formatUnits } from 'viem';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError, Market } from '@/lib/api/types';
+import type { Market } from '@/lib/api/types';
+import { formatError as formatErr } from '@/lib/errors';
+import { Trans, useT, type MessageKey } from '@/lib/i18n';
 import { useWallet } from '@/features/wallet/useWallet';
 import { signAndRelayBatch } from '@/features/wallet/relayerTx';
 import { hapticImpact } from '@/lib/telegram/webApp';
 
 type OutcomeSide = 'yes' | 'no';
+
+/** CLOB order statuses with their own wording; anything else is shown as-is. */
+const STATUS_KEYS = new Set(['matched', 'live', 'delayed', 'unmatched']);
 
 function pickTokenIds(market: Market): { yesToken?: string; noToken?: string } {
   const tokens = market.clobTokenIds ?? [];
@@ -36,33 +41,6 @@ function pickPrices(market: Market): { yes?: number; no?: number } {
   };
 }
 
-interface PrivyErrorShape {
-  code?: string;
-  type?: string;
-}
-
-function formatErr(e: unknown): string {
-  if (e instanceof AxiosError) {
-    const d = e.response?.data as ApiError | undefined;
-    if (d?.code === 'CLOB_DEPOSIT_WALLET_REQUIRED') {
-      return 'Activate your trading wallet on the Wallet tab first.';
-    }
-    if (d?.code === 'CLOB_GEOBLOCKED') {
-      return 'Polymarket has geoblocked the server region. Backend operator action required.';
-    }
-    if (d?.code === 'CLOB_ORDER_VERSION_MISMATCH') {
-      return 'Polymarket rejected the order format. Please report this; trading is paused until fixed.';
-    }
-    if (d?.message) return d.message;
-    if (e.message) return e.message;
-  }
-  if (e instanceof Error) {
-    const extra = e as Error & PrivyErrorShape;
-    const code = extra.code ?? extra.type;
-    return code ? `${code}: ${e.message}` : e.message;
-  }
-  return 'Something went wrong';
-}
 
 interface Props {
   market: Market;
@@ -77,6 +55,7 @@ interface Props {
  */
 export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
   const qc = useQueryClient();
+  const t = useT();
   const w = useWallet();
   const { signTypedData } = useSignTypedData();
   const { wallets } = useWallets();
@@ -153,9 +132,9 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
     mutationFn: async () => {
       setError(null);
       setSuccess(null);
-      if (!cid || !tokenId) throw new Error('Market is missing token id');
-      if (!w.address) throw new Error('Wallet not connected');
-      if (shares == null || shares <= 0) throw new Error('Invalid amount or price');
+      if (!cid || !tokenId) throw new Error(t('trade.missingToken'));
+      if (!w.address) throw new Error(t('common.walletNotConnected'));
+      if (shares == null || shares <= 0) throw new Error(t('trade.invalid'));
 
       await api.setWalletAddress(w.address);
       const prep = await api.prepareOrder({
@@ -207,13 +186,15 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
           );
         } catch (err) {
           console.error('Platform fee batch failed (order already submitted):', err);
-          setError(`Order placed, but the platform fee could not be charged: ${formatErr(err)}`);
+          setError(t('trade.feeFailed', { error: formatErr(err) }));
         }
       }
       return submitted;
     },
     onSuccess: (sub) => {
-      setSuccess(`Order ${sub.status}${sub.orderId ? ` · ${sub.orderId.slice(0, 10)}…` : ''}`);
+      const key = `trade.status.${sub.status}` as MessageKey;
+      const text = STATUS_KEYS.has(sub.status) ? t(key) : t('trade.statusOther', { status: sub.status });
+      setSuccess(`${text}${sub.orderId ? ` · ${sub.orderId.slice(0, 10)}…` : ''}`);
       hapticImpact('medium');
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['deposit-wallet'] });
@@ -228,12 +209,14 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" role="dialog" aria-modal="true">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
+      <button type="button" className="absolute inset-0 cursor-default" aria-label={t('common.close')} onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-t-2xl bg-tg-bg p-4 shadow-lg ring-1 ring-tg-hint/10">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="min-w-0 flex-1 text-lg font-semibold leading-snug text-tg-text">
-            Buy {outcome.toUpperCase()} · {market.question.slice(0, 48)}
-            {market.question.length > 48 ? '…' : ''}
+            {t('trade.title', {
+              outcome: t(outcome === 'yes' ? 'common.yes' : 'common.no'),
+              question: market.question.length > 48 ? `${market.question.slice(0, 48)}…` : market.question,
+            })}
           </h2>
           <button
             type="button"
@@ -246,33 +229,43 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
 
         {!w.authenticated ? (
           <p className="mb-3 rounded-lg bg-tg-secondary p-3 text-sm text-tg-hint">
-            Connect your wallet on the{' '}
-            <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
-              Wallet
-            </Link>{' '}
-            tab first.
+            <Trans
+              text={t('trade.connectFirst')}
+              slots={{
+                wallet: (
+                  <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
+                    {t('nav.wallet')}
+                  </Link>
+                ),
+              }}
+            />
           </p>
         ) : (
           depositWallet.data &&
           !ready && (
             <p className="mb-3 rounded-lg bg-tg-secondary p-3 text-sm text-tg-hint">
-              Activate and approve your trading wallet on the{' '}
-              <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
-                Wallet
-              </Link>{' '}
-              tab first.
+              <Trans
+                text={t('trade.activateFirst')}
+                slots={{
+                  wallet: (
+                    <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
+                      {t('nav.wallet')}
+                    </Link>
+                  ),
+                }}
+              />
             </p>
           )
         )}
 
         {!tokenId && (
-          <p className="mb-3 text-sm text-rose-500">This market has no CLOB token id; trading is unavailable.</p>
+          <p className="mb-3 text-sm text-rose-500">{t('trade.noToken')}</p>
         )}
 
         <div className="space-y-3">
           <label className="block">
             <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">
-              Limit price (pUSD per share)
+              {t('trade.limitPrice')}
             </span>
             <input
               type="number"
@@ -286,15 +279,15 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
             />
             <span className="mt-0.5 block text-[10px] text-tg-hint">
               {!onTick && priceStr
-                ? `Use steps of ${toTick(tick)}`
+                ? t('trade.useSteps', { tick: toTick(tick) })
                 : refPrice != null
-                  ? `Market ~${Math.round(refPrice * 100)}¢`
-                  : 'Enter limit price (0–1)'}
+                  ? t('trade.marketPrice', { cents: Math.round(refPrice * 100) })
+                  : t('trade.enterPrice')}
             </span>
           </label>
 
           <label className="block">
-            <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">Spend (pUSD)</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">{t('trade.spend')}</span>
             <input
               type="number"
               inputMode="decimal"
@@ -306,38 +299,39 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
             />
             {shares != null && priceOk && (
               <p className="mt-1 text-xs text-tg-hint">
-                ≈ {shares.toFixed(2)} shares
-                {balance != null && usdcNum > balance ? ' · exceeds trading wallet balance' : ''}
+                {t('trade.shares', { shares: shares.toFixed(2) })}
+                {balance != null && usdcNum > balance ? t('trade.exceedsBalance') : ''}
               </p>
             )}
             {tooSmall && minSpend != null && (
               <p className="mt-0.5 text-xs text-amber-500">
-                Minimum order is {minShares} shares — spend at least {minSpend.toFixed(2)} pUSD at this price.
+                {t('trade.minOrder', { min: minShares ?? '', spend: minSpend.toFixed(2) })}
               </p>
             )}
             {balance != null && (
-              <p className="mt-0.5 text-[10px] text-tg-hint">Available: {balance.toFixed(2)} pUSD</p>
+              <p className="mt-0.5 text-[10px] text-tg-hint">{t('trade.available', { balance: balance.toFixed(2) })}</p>
             )}
           </label>
 
           {feeCfg.data?.enabled && priceOk && usdcOk && (
             <p className="rounded-lg bg-tg-secondary px-3 py-2 text-xs text-tg-hint">
-              Platform fee {(feeCfg.data.spreadBps / 100).toFixed(2)}% · ≈ $
-              {((usdcNum * feeCfg.data.spreadBps) / 10_000).toFixed(4)} pUSD
-              <span className="ml-1 text-tg-hint/70">(second signature after the order)</span>
+              {t('trade.fee', {
+                pct: (feeCfg.data.spreadBps / 100).toFixed(2),
+                amount: ((usdcNum * feeCfg.data.spreadBps) / 10_000).toFixed(4),
+              })}
+              <span className="ml-1 text-tg-hint/70">{t('trade.feeNote')}</span>
             </p>
           )}
           {walletChainId !== undefined && walletChainId !== 137 && (
             <p className="text-xs text-amber-500">
-              Wallet is on chain {walletChainId}. We will try to switch to Polygon (137) before signing.
+              {t('trade.wrongChain', { chain: walletChainId })}
             </p>
           )}
           {error && <p className="text-sm text-rose-500">{error}</p>}
           {success && <p className="text-sm text-emerald-500">{success}</p>}
 
           <p className="text-[10px] leading-snug text-tg-hint">
-            Limit order on Polymarket. Most markets require at least 5 shares; it rests on the book until
-            filled or cancelled.
+            {t('trade.note')}
           </p>
 
           <button
@@ -346,7 +340,7 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
             onClick={() => trade.mutate()}
             className="w-full rounded-xl bg-tg-button py-3 text-base font-semibold text-tg-buttonText disabled:opacity-50"
           >
-            {trade.isPending ? 'Signing / submitting…' : 'Review & place order'}
+            {trade.isPending ? t('trade.submitting') : t('trade.submit')}
           </button>
         </div>
       </div>

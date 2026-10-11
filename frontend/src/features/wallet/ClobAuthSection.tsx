@@ -1,35 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSignTypedData, useWallets, type SignTypedDataParams } from '@privy-io/react-auth';
-import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError } from '@/lib/api/types';
+import { formatError as formatErr } from '@/lib/errors';
+import { useT } from '@/lib/i18n';
 
 interface Props {
   walletAddress?: string;
 }
 
-interface PrivyErrorShape {
-  code?: string;
-  type?: string;
-  cause?: unknown;
-  details?: unknown;
-}
-
-function formatErr(e: unknown): string {
-  if (e instanceof AxiosError) {
-    const d = e.response?.data as ApiError | undefined;
-    if (d?.message) return d.message;
-    if (e.message) return e.message;
-  }
-  if (e instanceof Error) {
-    const extra = e as Error & PrivyErrorShape;
-    const code = extra.code ?? extra.type;
-    if (code) return `${code}: ${e.message}`;
-    return e.message;
-  }
-  return 'Something went wrong';
-}
 
 /**
  * Polymarket CLOB L1 key derivation. The user signs an EIP-712 payload with the wallet; the backend
@@ -38,6 +17,7 @@ function formatErr(e: unknown): string {
  */
 export function ClobAuthSection({ walletAddress }: Props) {
   const qc = useQueryClient();
+  const t = useT();
   const { signTypedData } = useSignTypedData();
   const { wallets } = useWallets();
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +51,7 @@ export function ClobAuthSection({ walletAddress }: Props) {
 
   const connect = useMutation({
     mutationFn: async () => {
-      if (!walletAddress) throw new Error('Wallet not connected');
+      if (!walletAddress) throw new Error(t('common.walletNotConnected'));
       setError(null);
       setSuccess(null);
       const prep = await api.clobAuthPrepare();
@@ -105,7 +85,7 @@ export function ClobAuthSection({ walletAddress }: Props) {
       }
     },
     onSuccess: () => {
-      setSuccess('Connected to Polymarket trading');
+      setSuccess(t('clob.success'));
       qc.invalidateQueries({ queryKey: ['clob-auth'] });
     },
     onError: (e) => setError(formatErr(e)),
@@ -127,9 +107,9 @@ export function ClobAuthSection({ walletAddress }: Props) {
     <section className="space-y-2 rounded-xl bg-tg-secondary p-4">
       <header className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs uppercase tracking-wide text-tg-hint">Polymarket trading</p>
+          <p className="text-xs uppercase tracking-wide text-tg-hint">{t('clob.title')}</p>
           <p className="text-sm font-medium text-tg-text">
-            {status.isLoading ? '…' : configured ? 'Connected' : 'Not connected'}
+            {status.isLoading ? '…' : configured ? t('clob.connected') : t('clob.notConnected')}
           </p>
         </div>
         {configured ? (
@@ -139,7 +119,7 @@ export function ClobAuthSection({ walletAddress }: Props) {
             onClick={() => disconnect.mutate()}
             className="rounded-lg bg-tg-bg px-3 py-2 text-xs text-tg-hint disabled:opacity-50"
           >
-            Disconnect
+            {t('wallet.disconnect')}
           </button>
         ) : (
           <button
@@ -148,21 +128,19 @@ export function ClobAuthSection({ walletAddress }: Props) {
             onClick={() => connect.mutate()}
             className="rounded-lg bg-tg-button px-3 py-2 text-xs font-semibold text-tg-buttonText disabled:opacity-50"
           >
-            {connect.isPending ? 'Signing…' : 'Connect'}
+            {connect.isPending ? t('clob.signing') : t('clob.connect')}
           </button>
         )}
       </header>
       {wrongChain && (
         <p className="text-xs text-amber-500">
-          Wallet is on chain {walletChainId}. Polymarket uses Polygon (137); we will try to switch on
-          connect, but if your wallet UI shows a different network please change it manually.
+          {t('clob.wrongChain', { chain: walletChainId })}
         </p>
       )}
       {error && <p className="text-xs text-rose-500">{error}</p>}
       {success && <p className="text-xs text-emerald-500">{success}</p>}
       <p className="text-[10px] leading-snug text-tg-hint">
-        Sign once to derive CLOB API credentials; the server stores them encrypted and signs every order
-        request on your behalf. Disconnect to revoke.
+        {t('clob.note')}
       </p>
     </section>
   );

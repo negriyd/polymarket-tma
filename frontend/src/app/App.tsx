@@ -10,6 +10,7 @@ import { MarketDetailPage } from '@/pages/MarketDetailPage';
 import { FavoritesPage } from '@/pages/FavoritesPage';
 import { WalletPage } from '@/pages/WalletPage';
 import { WalletProvider } from '@/features/wallet/PrivyProvider';
+import { useT } from '@/lib/i18n';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,19 +27,20 @@ function AuthGate({ children }: { children: ReactNode }) {
   const status = useAuthStore((s) => s.status);
   const error = useAuthStore((s) => s.error);
   const reset = useAuthStore((s) => s.reset);
+  const t = useT();
   if (status === 'authenticated') return <>{children}</>;
   if (status === 'error') {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center">
         <div>
-          <p className="text-lg font-semibold">Authentication failed</p>
+          <p className="text-lg font-semibold">{t('auth.failed')}</p>
           <p className="mt-2 text-sm text-tg-hint">{error}</p>
           <button
             type="button"
             className="mt-4 rounded-full bg-tg-button px-4 py-2 text-sm font-semibold text-tg-buttonText"
             onClick={() => reset()}
           >
-            Try again
+            {t('common.tryAgain')}
           </button>
         </div>
       </div>

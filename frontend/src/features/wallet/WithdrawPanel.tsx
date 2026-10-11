@@ -1,25 +1,17 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth';
-import { AxiosError } from 'axios';
 import { formatUnits, parseUnits } from 'viem';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError, WithdrawDestination, WithdrawPrepared } from '@/lib/api/types';
+import type { WithdrawDestination, WithdrawPrepared } from '@/lib/api/types';
+import { formatError as formatErr } from '@/lib/errors';
+import { useT } from '@/lib/i18n';
 import { signAndRelayBatch, waitForRelayerTx } from './relayerTx';
 
 interface Props {
   walletAddress: string;
 }
 
-function formatErr(e: unknown): string {
-  if (e instanceof AxiosError) {
-    const d = e.response?.data as ApiError | undefined;
-    if (d?.message) return d.message;
-    if (e.message) return e.message;
-  }
-  if (e instanceof Error) return e.message;
-  return 'Something went wrong';
-}
 
 const key = (d: WithdrawDestination) => `${d.chainId}:${d.tokenAddress}`;
 
@@ -30,6 +22,7 @@ const key = (d: WithdrawDestination) => `${d.chainId}:${d.tokenAddress}`;
  */
 export function WithdrawPanel({ walletAddress }: Props) {
   const qc = useQueryClient();
+  const t = useT();
   const { signTypedData } = useSignTypedData();
   const [selected, setSelected] = useState<string | null>(null);
   const [recipient, setRecipient] = useState('');
@@ -56,9 +49,9 @@ export function WithdrawPanel({ walletAddress }: Props) {
 
   const prepare = useMutation({
     mutationFn: () => {
-      if (!dest) throw new Error('Choose where to withdraw');
+      if (!dest) throw new Error(t('wd.chooseDest'));
       const amount = parseUnits(amountStr.trim() || '0', 6);
-      if (amount <= 0n) throw new Error('Enter an amount');
+      if (amount <= 0n) throw new Error(t('wd.enterAmount'));
       return api.prepareWithdraw({
         toChainId: dest.chainId,
         toTokenAddress: dest.tokenAddress,
@@ -73,30 +66,27 @@ export function WithdrawPanel({ walletAddress }: Props) {
 
   const confirm = useMutation({
     mutationFn: async () => {
-      if (!prepared) throw new Error('Nothing to confirm');
+      if (!prepared) throw new Error(t('wd.nothing'));
       const tx = await signAndRelayBatch(prepared.batch, async (td) =>
         (await signTypedData(td as SignTypedDataParams, { address: walletAddress })).signature,
       );
-      if (!tx) throw new Error('Empty withdrawal batch');
+      if (!tx) throw new Error(t('wd.emptyBatch'));
       return waitForRelayerTx(tx);
     },
     onSuccess: (tx) => {
       setPrepared(null);
       setAmountStr('');
-      setDone(
-        prepared?.route === 'BRIDGE'
-          ? `Sent to the bridge (tx ${tx.transactionHash?.slice(0, 10) ?? tx.transactionId}…). Funds arrive shortly.`
-          : `Withdrawn (tx ${tx.transactionHash?.slice(0, 10) ?? tx.transactionId}…).`,
-      );
+      const ref = tx.transactionHash?.slice(0, 10) ?? tx.transactionId;
+      setDone(t(prepared?.route === 'BRIDGE' ? 'wd.bridged' : 'wd.done', { tx: ref }));
       qc.invalidateQueries({ queryKey: ['deposit-wallet'] });
       qc.invalidateQueries({ queryKey: ['withdraw-options'] });
     },
     onError: (e) => setError(formatErr(e)),
   });
 
-  if (options.isLoading) return <p className="text-xs text-tg-hint">Loading withdrawal options…</p>;
+  if (options.isLoading) return <p className="text-xs text-tg-hint">{t('wd.loading')}</p>;
   if (options.isError || !options.data) {
-    return <p className="text-xs text-rose-500">Withdrawal options are unavailable right now.</p>;
+    return <p className="text-xs text-rose-500">{t('wd.unavailable')}</p>;
   }
 
   const sentNum = Number(amountStr) || 0;
@@ -134,7 +124,7 @@ export function WithdrawPanel({ walletAddress }: Props) {
               setRecipient(e.target.value);
               reset();
             }}
-            placeholder={`Recipient ${dest.chainName} address`}
+            placeholder={t('wd.recipient', { chain: dest.chainName })}
             className="w-full rounded-xl border border-tg-hint/20 bg-tg-bg px-3 py-2 font-mono text-xs text-tg-text"
           />
           <div className="flex gap-2">
@@ -147,7 +137,7 @@ export function WithdrawPanel({ walletAddress }: Props) {
                 setAmountStr(e.target.value);
                 reset();
               }}
-              placeholder={`Amount in pUSD${dest.minUsd != null ? ` (min ${dest.minUsd})` : ''}`}
+              placeholder={dest.minUsd != null ? t('wd.amountMin', { min: dest.minUsd }) : t('wd.amount')}
               className="min-w-0 flex-1 rounded-xl border border-tg-hint/20 bg-tg-bg px-3 py-2 text-sm text-tg-text"
             />
             {balance != null && (
@@ -159,14 +149,13 @@ export function WithdrawPanel({ walletAddress }: Props) {
                 }}
                 className="rounded-xl bg-tg-bg px-3 text-xs text-tg-hint"
               >
-                Max
+                {t('wd.max')}
               </button>
             )}
           </div>
           {dest.route === 'DIRECT' && (
             <p className="text-[10px] leading-snug text-amber-500">
-              Sends pUSD itself. Many exchanges don&apos;t accept pUSD deposits — for an exchange, pick
-              USDC or USDT instead.
+              {t('wd.directNote')}
             </p>
           )}
 
@@ -177,19 +166,23 @@ export function WithdrawPanel({ walletAddress }: Props) {
               onClick={() => prepare.mutate()}
               className="w-full rounded-xl bg-tg-bg py-2 text-sm font-semibold text-tg-text disabled:opacity-50"
             >
-              {prepare.isPending ? 'Checking…' : 'Review withdrawal'}
+              {prepare.isPending ? t('wd.checking') : t('wd.review')}
             </button>
           ) : (
             <div className="space-y-2 rounded-lg bg-tg-bg p-2 text-xs text-tg-text">
               <p>
-                Send {amountStr} pUSD →{' '}
-                {received != null ? `≈ ${received.toFixed(2)} ${dest.symbol}` : dest.symbol} on {dest.chainName}
-                {prepared.estDurationMs ? ` · ~${Math.ceil(prepared.estDurationMs / 1000)} s` : ''}
+                {t('wd.summary', {
+                  amount: amountStr,
+                  received: received != null ? `≈ ${received.toFixed(2)} ${dest.symbol}` : dest.symbol,
+                  chain: dest.chainName,
+                })}
+                {prepared.estDurationMs
+                  ? t('wd.duration', { seconds: Math.ceil(prepared.estDurationMs / 1000) })
+                  : ''}
               </p>
               {expensive && (
                 <p className="text-rose-500">
-                  Bridge costs take {(100 - (received! / sentNum) * 100).toFixed(0)}% of this amount. Larger
-                  withdrawals, or pUSD on Polygon, lose much less.
+                  {t('wd.expensive', { pct: (100 - (received! / sentNum) * 100).toFixed(0) })}
                 </p>
               )}
               <button
@@ -198,7 +191,7 @@ export function WithdrawPanel({ walletAddress }: Props) {
                 onClick={() => confirm.mutate()}
                 className="w-full rounded-xl bg-tg-button py-2 text-sm font-semibold text-tg-buttonText disabled:opacity-50"
               >
-                {confirm.isPending ? 'Withdrawing…' : 'Confirm & sign'}
+                {confirm.isPending ? t('wd.withdrawing') : t('wd.confirm')}
               </button>
             </div>
           )}

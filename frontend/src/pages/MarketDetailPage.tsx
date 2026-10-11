@@ -10,9 +10,12 @@ import { isPriceChangeMessage } from '@/lib/ws/livePayload';
 import { isWalletConfigured } from '@/features/wallet/useWallet';
 import { MarketTradeSheet } from '@/features/trading/MarketTradeSheet';
 import { ClobTradeSheet } from '@/features/trading/ClobTradeSheet';
+import { Trans, useLocale, useT } from '@/lib/i18n';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
+  const t = useT();
+  const locale = useLocale();
   const qc = useQueryClient();
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [commentsEnabled, setCommentsEnabled] = useState(false);
@@ -81,9 +84,9 @@ export function MarketDetailPage() {
     };
   }, [cid, liveEnabled]);
 
-  if (market.isLoading) return <Spinner label="Loading market…" />;
+  if (market.isLoading) return <Spinner label={t('market.loading')} />;
   if (market.error || !market.data)
-    return <ErrorView message="Failed to load market" onRetry={() => market.refetch()} />;
+    return <ErrorView message={t('market.loadFailed')} onRetry={() => market.refetch()} />;
 
   const m = market.data;
   const priceAt = (idx: number): number | undefined => {
@@ -117,13 +120,13 @@ export function MarketDetailPage() {
     const idx = tokens.findIndex((t) => t === assetId);
     if (idx >= 0 && outcomes[idx]) return outcomes[idx];
     const short = assetId.length > 12 ? `${assetId.slice(0, 6)}…${assetId.slice(-4)}` : assetId;
-    return `Outcome ${short}`;
+    return t('market.outcomeShort', { id: short });
   };
 
   return (
     <div className="max-w-full min-w-0 space-y-4">
       <Link to="/markets" className="inline-flex items-center text-sm text-tg-hint">
-        ← Back
+        {t('common.back')}
       </Link>
 
       <header className="space-y-2">
@@ -141,7 +144,7 @@ export function MarketDetailPage() {
               toggleFav.mutate();
             }}
             className="shrink-0 text-2xl"
-            aria-label={isFavorite ? 'Unsave' : 'Save'}
+            aria-label={isFavorite ? t('market.unsave') : t('market.save')}
             disabled={!cid || toggleFav.isPending}
           >
             {isFavorite ? '★' : '☆'}
@@ -151,57 +154,65 @@ export function MarketDetailPage() {
 
       {privyTradeHint && (
         <div className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint ring-1 ring-tg-hint/20">
-          Trading needs Privy. Set <code className="text-tg-text">VITE_PRIVY_APP_ID</code> and open the{' '}
-          <Link to="/wallet" className="text-tg-button underline">
-            Wallet
-          </Link>{' '}
-          tab.
+          <Trans
+            text={t('market.privyHint')}
+            slots={{
+              env: <code className="text-tg-text">VITE_PRIVY_APP_ID</code>,
+              wallet: (
+                <Link to="/wallet" className="text-tg-button underline">
+                  {t('nav.wallet')}
+                </Link>
+              ),
+            }}
+          />
           <button
             type="button"
             className="ml-2 text-xs underline"
             onClick={() => setPrivyTradeHint(false)}
           >
-            Dismiss
+            {t('common.dismiss')}
           </button>
         </div>
       )}
 
       <section className="grid grid-cols-2 gap-2">
         <PriceTile
-          label="YES"
+          label={t('common.yes')}
           price={yesPrice}
           accent="emerald"
           disabled={!canTradeYes}
           onPress={() => openTrade('yes')}
-          actionLabel={betsCfg.data?.enabled ? 'Bet YES' : 'Buy YES'}
+          actionLabel={t(betsCfg.data?.enabled ? 'market.bet' : 'market.buy', { outcome: t('common.yes') })}
         />
         <PriceTile
-          label="NO"
+          label={t('common.no')}
           price={noPrice}
           accent="rose"
           disabled={!canTradeNo}
           onPress={() => openTrade('no')}
-          actionLabel={betsCfg.data?.enabled ? 'Bet NO' : 'Buy NO'}
+          actionLabel={t(betsCfg.data?.enabled ? 'market.bet' : 'market.buy', { outcome: t('common.no') })}
         />
       </section>
 
       {betsCfg.data?.enabled && betPool.data && (
         <section className="rounded-xl bg-tg-secondary p-3">
-          <h2 className="text-sm font-semibold text-tg-text">Betting pool</h2>
+          <h2 className="text-sm font-semibold text-tg-text">{t('market.pool')}</h2>
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
             {betPool.data.sides.map((s) => (
               <div key={s.outcomeIndex} className="rounded-lg bg-tg-bg/40 px-2 py-2">
                 <p className="font-medium text-tg-text">{s.outcomeLabel}</p>
                 <p className="tabular-nums text-tg-hint">${s.totalUsdc}</p>
                 <p className="text-[10px] text-tg-hint">
-                  {(Number(s.impliedProbability) * 100).toFixed(1)}% implied
+                  {t('market.implied', { pct: (Number(s.impliedProbability) * 100).toFixed(1) })}
                 </p>
               </div>
             ))}
           </div>
           <p className="mt-2 text-[10px] text-tg-hint">
-            Total ${betPool.data.totalPoolUsdc} · fee {(betPool.data.platformFeeBps / 100).toFixed(2)}% at
-            payout
+            {t('market.poolTotal', {
+              total: betPool.data.totalPoolUsdc,
+              fee: (betPool.data.platformFeeBps / 100).toFixed(2),
+            })}
           </p>
         </section>
       )}
@@ -224,21 +235,21 @@ export function MarketDetailPage() {
         ))}
 
       <section className="grid grid-cols-3 gap-2">
-        <Stat label="Vol 24h" value={fmt(m.volume24hr ?? m.volume24h)} />
-        <Stat label="Liquidity" value={fmt(m.liquidity)} />
-        <Stat label="Ends" value={m.endDate ? new Date(m.endDate).toLocaleDateString() : '—'} />
+        <Stat label={t('market.vol24h')} value={fmt(m.volume24hr ?? m.volume24h)} />
+        <Stat label={t('market.liquidity')} value={fmt(m.liquidity)} />
+        <Stat label={t('market.ends')} value={m.endDate ? new Date(m.endDate).toLocaleDateString(locale) : '—'} />
       </section>
 
       {m.description && (
         <section>
-          <h2 className="mb-1 text-sm font-semibold text-tg-text">About</h2>
+          <h2 className="mb-1 text-sm font-semibold text-tg-text">{t('market.about')}</h2>
           <p className="whitespace-pre-line text-sm text-tg-hint">{m.description}</p>
         </section>
       )}
 
       <section className="rounded-xl bg-tg-secondary p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-tg-text">Live trades</h2>
+          <h2 className="text-sm font-semibold text-tg-text">{t('market.liveTrades')}</h2>
           <button
             type="button"
             role="switch"
@@ -250,12 +261,12 @@ export function MarketDetailPage() {
                 : 'rounded-full bg-tg-secondary px-3 py-1 text-xs font-medium text-tg-hint ring-1 ring-tg-hint/30'
             }
           >
-            {liveEnabled ? 'On' : 'Off'}
+            {liveEnabled ? t('common.on') : t('common.off')}
           </button>
         </div>
         {!liveEnabled ? (
           <p className="mt-2 text-xs text-tg-hint">
-            Turn on to stream recent order-book activity for this market (uses WebSocket).
+            {t('market.liveOff')}
           </p>
         ) : isPriceChangeMessage(livePayload) ? (
           <LiveTradesList
@@ -264,15 +275,15 @@ export function MarketDetailPage() {
             ts={livePayload.timestamp}
           />
         ) : livePayload != null ? (
-          <p className="mt-2 text-xs text-tg-hint">Received an update we don&apos;t render yet.</p>
+          <p className="mt-2 text-xs text-tg-hint">{t('market.liveUnknown')}</p>
         ) : (
-          <p className="mt-2 text-xs text-tg-hint">Connecting… waiting for the first update.</p>
+          <p className="mt-2 text-xs text-tg-hint">{t('market.liveConnecting')}</p>
         )}
       </section>
 
       <section className="rounded-xl bg-tg-secondary p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-tg-text">Comments</h2>
+          <h2 className="text-sm font-semibold text-tg-text">{t('market.comments')}</h2>
           <button
             type="button"
             role="switch"
@@ -290,25 +301,25 @@ export function MarketDetailPage() {
                 : 'rounded-full bg-tg-secondary px-3 py-1 text-xs font-medium text-tg-hint ring-1 ring-tg-hint/30'
             }
           >
-            {commentsEnabled ? 'On' : 'Off'}
+            {commentsEnabled ? t('common.on') : t('common.off')}
           </button>
         </div>
         {!commentsEnabled ? (
-          <p className="mt-2 text-xs text-tg-hint">Turn on to load discussion for this market.</p>
+          <p className="mt-2 text-xs text-tg-hint">{t('market.commentsOff')}</p>
         ) : (
           <>
-            {comments.isLoading && <p className="mt-2 text-xs text-tg-hint">Loading comments…</p>}
+            {comments.isLoading && <p className="mt-2 text-xs text-tg-hint">{t('market.commentsLoading')}</p>}
             {comments.error && (
               <button
                 type="button"
                 className="mt-2 text-xs text-tg-button underline"
                 onClick={() => comments.refetch()}
               >
-                Could not load comments — tap to retry
+                {t('market.commentsFailed')}
               </button>
             )}
             {comments.data && comments.data.length === 0 && !comments.isLoading && (
-              <p className="mt-2 text-xs text-tg-hint">No comments yet.</p>
+              <p className="mt-2 text-xs text-tg-hint">{t('market.commentsEmpty')}</p>
             )}
             <ul className="mt-1 space-y-3">
               {comments.data?.map((c) => (
@@ -330,7 +341,7 @@ export function MarketDetailPage() {
                         <span className="text-xs font-semibold text-tg-text">{c.author}</span>
                         {c.createdAt && (
                           <span className="text-[10px] text-tg-hint">
-                            {new Date(c.createdAt).toLocaleString()}
+                            {new Date(c.createdAt).toLocaleString(locale)}
                           </span>
                         )}
                       </div>
@@ -356,22 +367,24 @@ function LiveTradesList({
   outcomeLabel: (assetId: string) => string;
   ts?: string;
 }) {
+  const t = useT();
+  const locale = useLocale();
   const timeLabel =
     ts != null && ts !== ''
       ? (() => {
           const n = Number(ts);
           if (!Number.isFinite(n)) return null;
           const ms = n > 1e12 ? n : n * 1000;
-          return new Date(ms).toLocaleTimeString();
+          return new Date(ms).toLocaleTimeString(locale);
         })()
       : null;
 
   return (
     <div className="mt-2 space-y-2">
-      {timeLabel && <p className="text-[10px] uppercase tracking-wide text-tg-hint">Updated {timeLabel}</p>}
+      {timeLabel && <p className="text-[10px] uppercase tracking-wide text-tg-hint">{t('market.updated', { time: timeLabel })}</p>}
       <ul className="space-y-2">
         {message.price_changes?.map((ch, i) => {
-          const side = ch.side?.toUpperCase() === 'BUY' ? 'Buy' : 'Sell';
+          const isBuy = ch.side?.toUpperCase() === 'BUY';
           const pct = (Number(ch.price) * 100).toFixed(1);
           const bid = ch.best_bid != null ? (Number(ch.best_bid) * 100).toFixed(1) : null;
           const ask = ch.best_ask != null ? (Number(ch.best_ask) * 100).toFixed(1) : null;
@@ -382,16 +395,18 @@ function LiveTradesList({
             >
               <span className="font-medium text-tg-text">{outcomeLabel(ch.asset_id)}</span>
               <span className="text-tg-hint"> · </span>
-              <span className={side === 'Buy' ? 'text-emerald-500' : 'text-rose-500'}>{side}</span>
+              <span className={isBuy ? 'text-emerald-500' : 'text-rose-500'}>
+                {isBuy ? t('market.side.buy') : t('market.side.sell')}
+              </span>
               <span className="text-tg-hint"> · </span>
               <span className="tabular-nums">{pct}%</span>
-              <span className="text-tg-hint"> @ size </span>
+              <span className="text-tg-hint">{t('market.atSize')}</span>
               <span className="tabular-nums">{ch.size}</span>
               {(bid != null || ask != null) && (
                 <span className="mt-1 block text-[10px] text-tg-hint">
-                  Book {bid != null ? `bid ${bid}%` : ''}
+                  {t('market.book')} {bid != null ? t('market.bid', { pct: bid }) : ''}
                   {bid != null && ask != null ? ' · ' : ''}
-                  {ask != null ? `ask ${ask}%` : ''}
+                  {ask != null ? t('market.ask', { pct: ask }) : ''}
                 </span>
               )}
             </li>
@@ -417,24 +432,25 @@ function PriceTile({
   disabled?: boolean;
   actionLabel?: string;
 }) {
+  const t = useT();
   const pct = price == null ? null : Math.round(price * 100);
   const accentClass = accent === 'emerald' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500';
   const className = `rounded-xl px-3 py-3 text-center ${accentClass} ${
     onPress && !disabled ? 'cursor-pointer transition active:scale-[0.98]' : ''
   } ${disabled ? 'opacity-50' : ''}`;
-  const cta = actionLabel ?? `Buy ${label}`;
+  const cta = actionLabel ?? t('market.buy', { outcome: label });
   return (
     <button
       type="button"
       className={className}
       onClick={onPress}
       disabled={disabled || !onPress}
-      aria-label={disabled || !onPress ? `${label} price` : cta}
+      aria-label={disabled || !onPress ? t('market.priceLabel', { outcome: label }) : cta}
     >
       <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{pct == null ? '—' : `${pct}%`}</p>
       {onPress && !disabled && (
-        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">Tap to {cta.toLowerCase()}</p>
+        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">{t('market.tapTo', { action: cta.toLowerCase() })}</p>
       )}
     </button>
   );

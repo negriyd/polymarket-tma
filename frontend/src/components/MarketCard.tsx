@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import type { Market } from '@/lib/api/types';
 import { hapticImpact } from '@/lib/telegram/webApp';
+import { useT } from '@/lib/i18n';
 
 interface Props {
   market: Market;
@@ -29,6 +30,7 @@ function pickYesPrice(market: Market): number | null {
 }
 
 export function MarketCard({ market, compact }: Props) {
+  const t = useT();
   const yesPrice = pickYesPrice(market);
   const yesPct = yesPrice == null ? null : Math.round(yesPrice * 100);
 
@@ -55,7 +57,7 @@ export function MarketCard({ market, compact }: Props) {
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium text-tg-text">{market.question}</h3>
           <p className="mt-1 truncate text-xs text-tg-hint">
-            Vol {formatVolume(market.volume24h ?? market.volume)} · Liq {formatVolume(market.liquidity)}
+            {t('card.volLiq', { vol: formatVolume(market.volume24h ?? market.volume), liq: formatVolume(market.liquidity) })}
           </p>
         </div>
         {yesPct != null && (
@@ -68,7 +70,7 @@ export function MarketCard({ market, compact }: Props) {
             >
               {yesPct}%
             </div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-wide text-tg-hint">Yes</div>
+            <div className="mt-0.5 text-[10px] uppercase tracking-wide text-tg-hint">{t('common.yes')}</div>
           </div>
         )}
       </article>

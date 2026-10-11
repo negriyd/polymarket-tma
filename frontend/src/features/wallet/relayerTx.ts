@@ -1,5 +1,6 @@
 import { api } from '@/lib/api/endpoints';
 import type { PreparedBatch, RelayerTx } from '@/lib/api/types';
+import { t } from '@/lib/i18n';
 
 const SUCCESS = new Set(['STATE_MINED', 'STATE_CONFIRMED']);
 const FAILURE = new Set(['STATE_FAILED', 'STATE_INVALID']);
@@ -13,7 +14,7 @@ export async function waitForRelayerTx(tx: RelayerTx, maxPolls = 90): Promise<Re
   for (let i = 0; i < maxPolls; i++) {
     if (SUCCESS.has(current.state)) return current;
     if (FAILURE.has(current.state)) {
-      throw new Error(`Relayer transaction ${current.state.replace('STATE_', '').toLowerCase()}`);
+      throw new Error(t('relayer.failed', { state: current.state.replace('STATE_', '').toLowerCase() }));
     }
     await new Promise((r) => setTimeout(r, 2_000));
     try {
@@ -22,7 +23,7 @@ export async function waitForRelayerTx(tx: RelayerTx, maxPolls = 90): Promise<Re
       // The relayer may not index a fresh id immediately; keep polling.
     }
   }
-  throw new Error('Timed out waiting for the relayer transaction');
+  throw new Error(t('relayer.timeout'));
 }
 
 /** Privy `signTypedData` bound to the owner address. */

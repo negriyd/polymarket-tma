@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth';
-import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError, Position } from '@/lib/api/types';
+import type { Position } from '@/lib/api/types';
+import { formatError as formatErr } from '@/lib/errors';
+import { useLocale, useT, type Locale, type TFunction } from '@/lib/i18n';
 import { hapticImpact } from '@/lib/telegram/webApp';
 import { signAndRelayBatch, waitForRelayerTx } from '@/features/wallet/relayerTx';
 
@@ -31,29 +32,20 @@ function fmtShares(n: number): string {
   return n.toFixed(4);
 }
 
-function formatErr(e: unknown): string {
-  if (e instanceof AxiosError) {
-    const d = e.response?.data as ApiError | undefined;
-    if (d?.message) return d.message;
-    if (e.message) return e.message;
-  }
-  if (e instanceof Error) return e.message;
-  return 'Something went wrong';
-}
 
 /**
  * Returns "ends Jul 12", "ends in 3d" (when within a week) or "ended" if the date is past.
  * Falsy / unparseable input returns null and the caller skips the badge.
  */
-function endHint(iso?: string | null): string | null {
+function endHint(iso: string | null | undefined, t: TFunction, locale: Locale): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   const now = Date.now();
   const diffDays = Math.round((d.getTime() - now) / (24 * 3600 * 1000));
-  if (diffDays < 0) return 'ended';
-  if (diffDays <= 7) return diffDays === 0 ? 'ends today' : `ends in ${diffDays}d`;
-  return `ends ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  if (diffDays < 0) return t('pos.ended');
+  if (diffDays <= 7) return diffDays === 0 ? t('pos.endsToday') : t('pos.endsIn', { count: diffDays });
+  return t('pos.endsOn', { date: d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) });
 }
 
 /**
@@ -67,10 +59,12 @@ function endHint(iso?: string | null): string | null {
  *   3. Refetches positions + trading wallet balance.
  */
 export function PositionRow({ p, walletAddress }: Props) {
+  const t = useT();
+  const locale = useLocale();
   const yes = p.outcome?.toLowerCase() === 'yes';
   const outcomeColor = yes ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500';
   const pnlColor = p.cashPnl >= 0 ? 'text-emerald-500' : 'text-rose-500';
-  const ends = endHint(p.endDate);
+  const ends = endHint(p.endDate, t, locale);
 
   const qc = useQueryClient();
   const { signTypedData } = useSignTypedData();
@@ -79,7 +73,7 @@ export function PositionRow({ p, walletAddress }: Props) {
 
   const claim = useMutation({
     mutationFn: async () => {
-      if (!walletAddress) throw new Error('Wallet not connected');
+      if (!walletAddress) throw new Error(t('common.walletNotConnected'));
       setError(null);
       setTxHash(null);
       const batch = await api.prepareRedeemBatch({
@@ -89,7 +83,7 @@ export function PositionRow({ p, walletAddress }: Props) {
       const tx = await signAndRelayBatch(batch, async (td) =>
         (await signTypedData(td as SignTypedDataParams, { address: walletAddress })).signature,
       );
-      if (!tx) throw new Error('Nothing to claim');
+      if (!tx) throw new Error(t('pos.nothingToClaim'));
       const mined = await waitForRelayerTx(tx);
       return mined.transactionHash ?? tx.transactionId;
     },
@@ -126,12 +120,12 @@ export function PositionRow({ p, walletAddress }: Props) {
             </span>
             {p.favorite && (
               <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-500">
-                ★ favorite
+                {t('pos.favorite')}
               </span>
             )}
             {p.redeemable && (
               <span className="rounded-md bg-tg-button/20 px-1.5 py-0.5 text-[10px] font-medium text-tg-button">
-                redeemable
+                {t('pos.redeemable')}
               </span>
             )}
             {ends && (
@@ -148,7 +142,7 @@ export function PositionRow({ p, walletAddress }: Props) {
             {p.title || p.conditionId.slice(0, 14) + '…'}
           </Link>
           <p className="text-[11px] text-tg-hint">
-            {fmtShares(p.size)} sh @ {p.avgPrice.toFixed(3)} · now {p.curPrice.toFixed(3)}
+            {t('pos.sharesAt', { shares: fmtShares(p.size), avg: p.avgPrice.toFixed(3), cur: p.curPrice.toFixed(3) })}
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -163,7 +157,7 @@ export function PositionRow({ p, walletAddress }: Props) {
       {p.redeemable && walletAddress && (
         <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-tg-bg p-2">
           <span className="text-[11px] text-tg-hint">
-            Market settled — burn {p.outcome} tokens for USDC.
+            {t('pos.settled', { outcome: p.outcome ?? '' })}
           </span>
           <button
             type="button"
@@ -171,12 +165,12 @@ export function PositionRow({ p, walletAddress }: Props) {
             onClick={() => claim.mutate()}
             className="rounded-md bg-tg-button px-3 py-1 text-xs font-semibold text-tg-buttonText disabled:opacity-50"
           >
-            {claim.isPending ? 'Claiming…' : 'Claim'}
+            {claim.isPending ? t('pos.claiming') : t('pos.claim')}
           </button>
         </div>
       )}
       {txHash && (
-        <p className="mt-1 break-all text-[10px] text-emerald-500">claim tx: {txHash}</p>
+        <p className="mt-1 break-all text-[10px] text-emerald-500">{t('pos.claimTx', { hash: txHash })}</p>
       )}
       {error && <p className="mt-1 text-[11px] text-rose-500">{error}</p>}
     </li>

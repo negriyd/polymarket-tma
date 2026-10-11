@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth';
-import { AxiosError } from 'axios';
 import { formatUnits } from 'viem';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError } from '@/lib/api/types';
+import { formatError as formatErr } from '@/lib/errors';
+import { useT } from '@/lib/i18n';
 import { signAndRelayBatch, waitForRelayerTx } from './relayerTx';
 import { FundingPanel } from './FundingPanel';
 import { WithdrawPanel } from './WithdrawPanel';
@@ -13,15 +13,6 @@ interface Props {
   walletAddress?: string;
 }
 
-function formatErr(e: unknown): string {
-  if (e instanceof AxiosError) {
-    const d = e.response?.data as ApiError | undefined;
-    if (d?.message) return d.message;
-    if (e.message) return e.message;
-  }
-  if (e instanceof Error) return e.message;
-  return 'Something went wrong';
-}
 
 /**
  * Polymarket CLOB v2 trades through a per-user deposit wallet (smart contract owned by the Privy
@@ -30,6 +21,7 @@ function formatErr(e: unknown): string {
  */
 export function DepositWalletSection({ walletAddress }: Props) {
   const qc = useQueryClient();
+  const t = useT();
   const { signTypedData } = useSignTypedData();
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -55,7 +47,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
 
   const approve = useMutation({
     mutationFn: async () => {
-      if (!walletAddress) throw new Error('Wallet not connected');
+      if (!walletAddress) throw new Error(t('common.walletNotConnected'));
       setError(null);
       const tx = await signAndRelayBatch(await api.prepareDepositWalletApprovals(), async (td) =>
         (await signTypedData(td as SignTypedDataParams, { address: walletAddress })).signature,
@@ -87,17 +79,17 @@ export function DepositWalletSection({ walletAddress }: Props) {
     <section className="space-y-2 rounded-xl bg-tg-secondary p-4">
       <header className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs uppercase tracking-wide text-tg-hint">Trading wallet</p>
+          <p className="text-xs uppercase tracking-wide text-tg-hint">{t('dw.title')}</p>
           <p className="text-sm font-medium text-tg-text">
             {status.isLoading
               ? '…'
               : !s
-                ? 'Unavailable'
+                ? t('dw.unavailable')
                 : s.readyToTrade
-                  ? 'Ready to trade'
+                  ? t('dw.ready')
                   : !s.deployed
-                    ? 'Not activated'
-                    : `${missing} approval${missing === 1 ? '' : 's'} pending`}
+                    ? t('dw.notActivated')
+                    : t('dw.approvalsPending', { count: missing })}
           </p>
         </div>
         {s && !s.deployed && (
@@ -107,7 +99,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
             onClick={() => deploy.mutate()}
             className="rounded-lg bg-tg-button px-3 py-2 text-xs font-semibold text-tg-buttonText disabled:opacity-50"
           >
-            {deploy.isPending ? 'Activating…' : 'Activate'}
+            {deploy.isPending ? t('dw.activating') : t('dw.activate')}
           </button>
         )}
         {s && s.deployed && missing > 0 && (
@@ -117,7 +109,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
             onClick={() => approve.mutate()}
             className="rounded-lg bg-tg-button px-3 py-2 text-xs font-semibold text-tg-buttonText disabled:opacity-50"
           >
-            {approve.isPending ? 'Approving…' : 'Approve'}
+            {approve.isPending ? t('dw.approving') : t('dw.approve')}
           </button>
         )}
       </header>
@@ -125,7 +117,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
       {s && (
         <>
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-tg-hint">Balance</p>
+            <p className="text-[10px] uppercase tracking-wide text-tg-hint">{t('dw.balance')}</p>
             <p className="text-2xl font-semibold tabular-nums text-tg-text">
               {balance ?? '—'} <span className="text-base font-normal text-tg-hint">pUSD</span>
             </p>
@@ -136,7 +128,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
             className="w-full rounded-lg bg-tg-bg p-2 text-left"
           >
             <span className="block text-[10px] uppercase tracking-wide text-tg-hint">
-              Wallet address (Polygon) · {copied ? 'copied' : 'tap to copy'}
+              {t('dw.address', { state: copied ? t('common.copied') : t('common.tapToCopy') })}
             </span>
             <span className="block break-all font-mono text-xs text-tg-text">{s.address}</span>
           </button>
@@ -146,7 +138,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
               onClick={() => setPanel((v) => (v === 'topup' ? null : 'topup'))}
               className="rounded-lg bg-tg-button py-2 text-sm font-semibold text-tg-buttonText"
             >
-              {panel === 'topup' ? 'Hide' : 'Top up'}
+              {panel === 'topup' ? t('common.hide') : t('dw.topUp')}
             </button>
             <button
               type="button"
@@ -154,7 +146,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
               onClick={() => setPanel((v) => (v === 'withdraw' ? null : 'withdraw'))}
               className="rounded-lg bg-tg-bg py-2 text-sm font-semibold text-tg-text disabled:opacity-50"
             >
-              {panel === 'withdraw' ? 'Hide' : 'Withdraw'}
+              {panel === 'withdraw' ? t('common.hide') : t('dw.withdraw')}
             </button>
           </div>
           {panel === 'topup' && <FundingPanel />}
@@ -166,9 +158,7 @@ export function DepositWalletSection({ walletAddress }: Props) {
       {status.isError && <p className="text-xs text-rose-500">{formatErr(status.error)}</p>}
 
       <p className="text-[10px] leading-snug text-tg-hint">
-        Polymarket trades from a smart wallet controlled by your key. Activation and approvals are
-        gasless. Orders are paid in pUSD held by this wallet — don&apos;t send tokens to the wallet
-        address directly; use Top up, which converts them to pUSD.
+        {t('dw.note')}
       </p>
     </section>
   );

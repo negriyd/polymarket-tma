@@ -2,9 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useSendTransaction, useWallets } from '@privy-io/react-auth';
-import { AxiosError } from 'axios';
 import { api } from '@/lib/api/endpoints';
-import type { ApiError, Market } from '@/lib/api/types';
+import type { Market } from '@/lib/api/types';
+import { formatError as formatErr } from '@/lib/errors';
+import { Trans, useT } from '@/lib/i18n';
 import { useWallet } from '@/features/wallet/useWallet';
 import { hapticImpact } from '@/lib/telegram/webApp';
 
@@ -16,15 +17,6 @@ function outcomeIndexForSide(market: Market, side: OutcomeSide): number {
   return idx >= 0 ? idx : side === 'yes' ? 0 : 1;
 }
 
-function formatErr(e: unknown): string {
-  if (e instanceof AxiosError) {
-    const d = e.response?.data as ApiError | undefined;
-    if (d?.message) return d.message;
-    if (e.message) return e.message;
-  }
-  if (e instanceof Error) return e.message;
-  return 'Something went wrong';
-}
 
 interface Props {
   market: Market;
@@ -38,6 +30,7 @@ interface Props {
  */
 export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
   const qc = useQueryClient();
+  const t = useT();
   const w = useWallet();
   const { sendTransaction } = useSendTransaction();
   const { wallets } = useWallets();
@@ -57,7 +50,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
 
   const outcomeIndex = outcomeIndexForSide(market, outcome);
   const outcomeLabel =
-    market.outcomes?.[outcomeIndex] ?? (outcome === 'yes' ? 'YES' : 'NO');
+    market.outcomes?.[outcomeIndex] ?? t(outcome === 'yes' ? 'common.yes' : 'common.no');
   const cid = market.conditionId;
 
   const [usdcStr, setUsdcStr] = useState('5');
@@ -108,9 +101,9 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
     mutationFn: async () => {
       setError(null);
       setSuccess(null);
-      if (!cid || !w.address) throw new Error('Wallet not connected');
+      if (!cid || !w.address) throw new Error(t('common.walletNotConnected'));
       const u = Number(usdcStr);
-      if (!Number.isFinite(u) || u < minBet) throw new Error(`Minimum bet is ${minBet} USDC`);
+      if (!Number.isFinite(u) || u < minBet) throw new Error(t('bet.min', { min: minBet }));
 
       await api.setWalletAddress(w.address);
 
@@ -148,7 +141,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
       return confirmed;
     },
     onSuccess: (bet) => {
-      setSuccess(`Bet confirmed · ${bet.outcomeLabel} · $${bet.amountUsdc}`);
+      setSuccess(t('bet.confirmed', { outcome: bet.outcomeLabel, amount: bet.amountUsdc }));
       hapticImpact('medium');
       qc.invalidateQueries({ queryKey: ['bet-pool', cid] });
       qc.invalidateQueries({ queryKey: ['my-bets'] });
@@ -165,7 +158,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
   if (betsCfg.isLoading) {
     return (
       <SheetShell onClose={onClose}>
-        <p className="text-sm text-tg-hint">Loading…</p>
+        <p className="text-sm text-tg-hint">{t('common.loading')}</p>
       </SheetShell>
     );
   }
@@ -174,8 +167,10 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
     return (
       <SheetShell onClose={onClose}>
         <p className="rounded-lg bg-tg-secondary p-3 text-sm text-tg-hint">
-          Internal betting is not enabled on this server. Operator must set{' '}
-          <code className="text-tg-text">BETS_ENABLED=true</code> and a treasury address.
+          <Trans
+            text={t('bet.disabled')}
+            slots={{ env: <code className="text-tg-text">BETS_ENABLED=true</code> }}
+          />
         </p>
       </SheetShell>
     );
@@ -184,37 +179,46 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
   return (
     <SheetShell onClose={onClose}>
       <h2 className="mb-3 text-lg font-semibold text-tg-text">
-        Bet {outcomeLabel} · {market.question.slice(0, 48)}
-        {market.question.length > 48 ? '…' : ''}
+        {t('bet.title', {
+          outcome: outcomeLabel,
+          question: market.question.length > 48 ? `${market.question.slice(0, 48)}…` : market.question,
+        })}
       </h2>
 
       {!w.authenticated && (
         <p className="mb-3 rounded-lg bg-tg-secondary p-3 text-sm text-tg-hint">
-          Connect your wallet on the{' '}
-          <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
-            Wallet
-          </Link>{' '}
-          tab first.
+          <Trans
+            text={t('trade.connectFirst')}
+            slots={{
+              wallet: (
+                <Link to="/wallet" className="font-medium text-tg-button underline" onClick={onClose}>
+                  {t('nav.wallet')}
+                </Link>
+              ),
+            }}
+          />
         </p>
       )}
 
       {pool.data && (
         <div className="mb-3 rounded-xl bg-tg-secondary p-3 text-xs text-tg-hint">
-          <p className="font-semibold uppercase tracking-wide text-tg-text">Parimutuel pool</p>
+          <p className="font-semibold uppercase tracking-wide text-tg-text">{t('bet.pool')}</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {pool.data.sides.map((s) => (
               <div key={s.outcomeIndex} className="rounded-lg bg-tg-bg/50 px-2 py-1.5">
                 <p className="font-medium text-tg-text">{s.outcomeLabel}</p>
                 <p className="tabular-nums">${s.totalUsdc}</p>
                 <p className="text-[10px]">
-                  {(Number(s.impliedProbability) * 100).toFixed(1)}% of pool
+                  {t('bet.ofPool', { pct: (Number(s.impliedProbability) * 100).toFixed(1) })}
                 </p>
               </div>
             ))}
           </div>
           <p className="mt-2 text-[10px]">
-            Total pool ${pool.data.totalPoolUsdc} · platform fee{' '}
-            {(pool.data.platformFeeBps / 100).toFixed(2)}% taken at payout
+            {t('bet.poolTotal', {
+              total: pool.data.totalPoolUsdc,
+              fee: (pool.data.platformFeeBps / 100).toFixed(2),
+            })}
           </p>
         </div>
       )}
@@ -222,7 +226,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
       <div className="space-y-3">
         <label className="block">
           <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">
-            Stake (USDC)
+            {t('bet.stake')}
           </span>
           <input
             type="number"
@@ -235,30 +239,28 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
           />
           {impliedPct && (
             <span className="mt-0.5 block text-[10px] text-tg-hint">
-              Current implied share of {outcomeLabel} side: ~{impliedPct}% of pool after your bet
+              {t('bet.impliedShare', { outcome: outcomeLabel, pct: impliedPct })}
             </span>
           )}
           {w.usdcBalance && usdcNum > Number(w.usdcBalance.formatted) && (
-            <span className="mt-0.5 block text-[10px] text-rose-500">Exceeds wallet USDC balance</span>
+            <span className="mt-0.5 block text-[10px] text-rose-500">{t('bet.exceeds')}</span>
           )}
         </label>
 
         {walletChainId !== undefined && walletChainId !== 137 && (
           <p className="text-xs text-amber-500">
-            Wallet is on chain {walletChainId}. We will try to switch to Polygon (137) before sending
-            USDC.
+            {t('bet.wrongChain', { chain: walletChainId })}
           </p>
         )}
 
         {error && <p className="text-sm text-rose-500">{error}</p>}
         {success && <p className="text-sm text-emerald-500">{success}</p>}
         {paymentTxHash && (
-          <p className="break-all text-[10px] text-emerald-500">payment tx: {paymentTxHash}</p>
+          <p className="break-all text-[10px] text-emerald-500">{t('bet.paymentTx', { hash: paymentTxHash })}</p>
         )}
 
         <p className="text-[10px] leading-snug text-tg-hint">
-          Your stake is sent on-chain to the platform treasury. Winnings are credited to your internal
-          balance after market resolution and can be withdrawn to your wallet.
+          {t('bet.note')}
         </p>
 
         <button
@@ -267,7 +269,7 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
           onClick={() => placeBet.mutate()}
           className="w-full rounded-xl bg-tg-button py-3 text-base font-semibold text-tg-buttonText disabled:opacity-50"
         >
-          {placeBet.isPending ? 'Sending USDC…' : `Place bet · ${outcomeLabel}`}
+          {placeBet.isPending ? t('bet.sending') : t('bet.place', { outcome: outcomeLabel })}
         </button>
       </div>
     </SheetShell>
@@ -275,9 +277,10 @@ export function MarketTradeSheet({ market, outcome, open, onClose }: Props) {
 }
 
 function SheetShell({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" role="dialog" aria-modal="true">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
+      <button type="button" className="absolute inset-0 cursor-default" aria-label={t('common.close')} onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-t-2xl bg-tg-bg p-4 shadow-lg ring-1 ring-tg-hint/10">
         <div className="mb-2 flex justify-end">
           <button

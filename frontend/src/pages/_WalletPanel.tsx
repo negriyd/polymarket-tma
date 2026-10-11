@@ -7,6 +7,7 @@ import { PositionRow } from '@/features/trading/PositionRow';
 import { Spinner } from '@/components/Spinner';
 import { api } from '@/lib/api/endpoints';
 import type { Bet } from '@/lib/api/types';
+import { useLocale, useT } from '@/lib/i18n';
 
 function statusColor(status: string): string {
   switch (status) {
@@ -27,6 +28,7 @@ function statusColor(status: string): string {
 export function WalletPanel() {
   const qc = useQueryClient();
   const w = useWallet();
+  const t = useT();
   const [withdrawStr, setWithdrawStr] = useState('');
 
   const syncAddress = useMutation({
@@ -72,7 +74,7 @@ export function WalletPanel() {
     mutationFn: () => {
       const amount = Number(withdrawStr);
       if (!Number.isFinite(amount) || amount <= 0) {
-        return Promise.reject(new Error('Enter a valid amount'));
+        return Promise.reject(new Error(t('wallet.enterAmount')));
       }
       return api.withdrawBetBalance({ amountUsdc: amount });
     },
@@ -95,29 +97,29 @@ export function WalletPanel() {
     return { count: list.length, value, pnl };
   }, [positions.data]);
 
-  if (!w.ready) return <Spinner label="Initialising wallet…" />;
+  if (!w.ready) return <Spinner label={t('wallet.initialising')} />;
 
   return (
     <div className="max-w-full min-w-0 space-y-4 pt-2">
-      <h1 className="text-2xl font-semibold">Wallet</h1>
+      <h1 className="text-2xl font-semibold">{t('wallet.title')}</h1>
 
       {!w.authenticated && (
         <button
           onClick={() => void w.login()}
           className="w-full rounded-xl bg-tg-button px-4 py-3 text-base font-semibold text-tg-buttonText"
         >
-          Connect wallet
+          {t('wallet.connect')}
         </button>
       )}
 
       {w.authenticated && (
         <>
           <section className="rounded-xl bg-tg-secondary p-4">
-            <p className="text-xs uppercase tracking-wide text-tg-hint">Address</p>
+            <p className="text-xs uppercase tracking-wide text-tg-hint">{t('wallet.address')}</p>
             <p className="break-all text-sm font-mono text-tg-text">{w.address ?? '—'}</p>
           </section>
           <section className="rounded-xl bg-tg-secondary p-4">
-            <p className="text-xs uppercase tracking-wide text-tg-hint">USDC on Polygon (wallet)</p>
+            <p className="text-xs uppercase tracking-wide text-tg-hint">{t('wallet.usdc')}</p>
             <p className="text-2xl font-semibold tabular-nums text-tg-text">
               {w.usdcLoading ? '…' : (w.usdcBalance?.formatted ?? '0')} USDC
             </p>
@@ -126,20 +128,20 @@ export function WalletPanel() {
           {betsEnabled && (
             <>
               <section className="rounded-xl bg-tg-secondary p-4">
-                <p className="text-xs uppercase tracking-wide text-tg-hint">Winnings balance</p>
+                <p className="text-xs uppercase tracking-wide text-tg-hint">{t('wallet.winnings')}</p>
                 <p className="text-2xl font-semibold tabular-nums text-tg-text">
                   {balance.isLoading ? '…' : `${balance.data?.availableUsdc ?? '0'} USDC`}
                 </p>
                 <p className="mt-1 text-[10px] text-tg-hint">
-                  Credited after winning bets resolve. Withdraw to your wallet below.
+                  {t('wallet.winningsNote')}
                 </p>
               </section>
 
               <section className="rounded-xl bg-tg-secondary p-4 space-y-2">
-                <h2 className="text-sm font-semibold text-tg-text">Withdraw winnings</h2>
+                <h2 className="text-sm font-semibold text-tg-text">{t('wallet.withdrawWinnings')}</h2>
                 {!balance.data?.withdrawEnabled && (
                   <p className="text-xs text-amber-500">
-                    On-chain withdraw is disabled until the operator sets BETS_TREASURY_PRIVATE_KEY.
+                    {t('wallet.withdrawDisabled', { env: 'BETS_TREASURY_PRIVATE_KEY' })}
                   </p>
                 )}
                 <input
@@ -148,7 +150,7 @@ export function WalletPanel() {
                   step="1"
                   value={withdrawStr}
                   onChange={(e) => setWithdrawStr(e.target.value)}
-                  placeholder={`Min ${betsCfg.data?.minWithdrawUsdc ?? '1'} USDC`}
+                  placeholder={t('wallet.minUsdc', { min: betsCfg.data?.minWithdrawUsdc ?? '1' })}
                   className="w-full rounded-xl border border-tg-hint/20 bg-tg-bg px-3 py-2 text-sm text-tg-text"
                 />
                 <button
@@ -161,25 +163,25 @@ export function WalletPanel() {
                   onClick={() => withdraw.mutate()}
                   className="w-full rounded-xl bg-tg-button py-2 text-sm font-semibold text-tg-buttonText disabled:opacity-50"
                 >
-                  {withdraw.isPending ? 'Sending…' : 'Withdraw to wallet'}
+                  {withdraw.isPending ? t('wallet.sending') : t('wallet.withdrawToWallet')}
                 </button>
                 {withdraw.isError && (
                   <p className="text-xs text-rose-500">
-                    {withdraw.error instanceof Error ? withdraw.error.message : 'Withdraw failed'}
+                    {withdraw.error instanceof Error ? withdraw.error.message : t('wallet.withdrawFailed')}
                   </p>
                 )}
                 {withdraw.isSuccess && (
                   <p className="text-xs text-emerald-500">
-                    Sent · tx {withdraw.data.txHash?.slice(0, 14)}…
+                    {t('wallet.sentTx', { hash: withdraw.data.txHash?.slice(0, 14) ?? '' })}
                   </p>
                 )}
               </section>
 
               <section className="space-y-2">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-tg-hint">My bets</h2>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-tg-hint">{t('wallet.myBets')}</h2>
                 {myBets.isLoading && <Spinner />}
                 {myBets.data && myBets.data.length === 0 && (
-                  <p className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint">No bets yet.</p>
+                  <p className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint">{t('wallet.noBets')}</p>
                 )}
                 <ul className="space-y-2">
                   {myBets.data?.map((b) => (
@@ -197,7 +199,7 @@ export function WalletPanel() {
 
               <section className="space-y-2">
                 <header className="flex items-baseline justify-between gap-2">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-tg-hint">Positions</h2>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-tg-hint">{t('wallet.positions')}</h2>
                   {stats && (
                     <p className="text-[11px] text-tg-hint">
                       {stats.count} · ${stats.value.toFixed(2)} ·{' '}
@@ -210,11 +212,11 @@ export function WalletPanel() {
                 {positions.isLoading && <Spinner />}
                 {positions.isError && (
                   <p className="rounded-xl bg-tg-secondary p-3 text-sm text-rose-500">
-                    Failed to load positions.
+                    {t('wallet.positionsFailed')}
                   </p>
                 )}
                 {positions.data && positions.data.length === 0 && (
-                  <p className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint">No open positions.</p>
+                  <p className="rounded-xl bg-tg-secondary p-3 text-sm text-tg-hint">{t('wallet.noPositions')}</p>
                 )}
                 <ul className="space-y-2">
                   {positions.data?.map((p) => (
@@ -229,7 +231,7 @@ export function WalletPanel() {
             onClick={() => void w.logout()}
             className="w-full rounded-xl bg-tg-secondary py-2 text-sm text-tg-hint"
           >
-            Disconnect
+            {t('wallet.disconnect')}
           </button>
         </>
       )}
@@ -237,7 +239,14 @@ export function WalletPanel() {
   );
 }
 
+const BET_STATUSES = ['WON', 'LOST', 'PENDING', 'CONFIRMED', 'REFUNDED'] as const;
+
 function BetRow({ bet }: { bet: Bet }) {
+  const t = useT();
+  const locale = useLocale();
+  const status = (BET_STATUSES as readonly string[]).includes(bet.status)
+    ? t(`betStatus.${bet.status as (typeof BET_STATUSES)[number]}`)
+    : bet.status;
   return (
     <li className="rounded-xl bg-tg-secondary p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
@@ -248,12 +257,12 @@ function BetRow({ bet }: { bet: Bet }) {
           <p className="truncate text-[10px] text-tg-hint">{bet.conditionId}</p>
         </div>
         <span className={`shrink-0 text-xs font-semibold uppercase ${statusColor(bet.status)}`}>
-          {bet.status}
+          {status}
         </span>
       </div>
       {bet.confirmedAt && (
         <p className="mt-1 text-[10px] text-tg-hint">
-          {new Date(bet.confirmedAt).toLocaleString()}
+          {new Date(bet.confirmedAt).toLocaleString(locale)}
         </p>
       )}
     </li>
