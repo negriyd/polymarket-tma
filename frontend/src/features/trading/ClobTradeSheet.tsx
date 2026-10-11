@@ -8,6 +8,7 @@ import { api } from '@/lib/api/endpoints';
 import type { Market } from '@/lib/api/types';
 import { formatError as formatErr } from '@/lib/errors';
 import { Trans, useT, type MessageKey } from '@/lib/i18n';
+import { RiskNote } from '@/components/RiskNote';
 import { useWallet } from '@/features/wallet/useWallet';
 import { signAndRelayBatch } from '@/features/wallet/relayerTx';
 import { hapticImpact } from '@/lib/telegram/webApp';
@@ -339,6 +340,7 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
           <p className="text-[10px] leading-snug text-tg-hint">
             {t('trade.note')}
           </p>
+          <RiskNote short />
 
           <button
             type="button"

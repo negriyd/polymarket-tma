@@ -133,6 +133,8 @@ export interface Partner {
   months: number | null;
   active: boolean;
   note: string | null;
+  /** What the partner's audience sees; null = Telegram name. */
+  publicName: string | null;
   since: string;
   hasWallet: boolean;
   code: string;
@@ -143,6 +145,7 @@ export interface PartnerTermsInput {
   shareBps: number;
   months: number | null;
   note?: string | null;
+  publicName?: string | null;
 }
 
 /** `link` is the invite link without a tag; append `_s<tag>` for a tagged one. */
@@ -157,6 +160,8 @@ export interface PartnerCabinet {
     months: number | null;
     since: string;
     code: string;
+    publicName: string;
+    accuracy: AuthorAccuracy;
     totals: PartnerFunnel;
     sources: PartnerFunnel[];
   };
@@ -492,4 +497,42 @@ export interface BetWithdrawal {
   txHash?: string | null;
   createdAt: string;
   sentAt?: string | null;
+}
+
+/** pct is null until the author has enough resolved predictions to show it publicly. */
+export interface AuthorAccuracy {
+  correct: number;
+  resolved: number;
+  pct: number | null;
+}
+
+/** A partner as their audience sees them. */
+export interface Author {
+  code: string;
+  name: string;
+  username: string | null;
+  accuracy: AuthorAccuracy;
+  /** The author's free prediction on the requested market. */
+  pick: { outcome: string; price: number | null; resolved: boolean; correct: boolean | null } | null;
+}
+
+export interface LeaderboardRow {
+  rank: number;
+  name: string;
+  correct: number;
+  resolved: number;
+  pct: number;
+  me: boolean;
+}
+
+export interface Leaderboard {
+  code: string;
+  author: string;
+  weekStart: string;
+  weekEnd: string;
+  minResolved: number;
+  participants: number;
+  top: LeaderboardRow[];
+  /** The viewer's row when outside the top. */
+  me: LeaderboardRow | null;
 }

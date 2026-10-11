@@ -38,11 +38,12 @@ public class PartnerService {
 
     /** @param months null = lifetime */
     public record Partner(long userId, long telegramId, String username, String name, int shareBps,
-                          Integer months, boolean active, String note, Instant since, boolean hasWallet,
-                          String code, Funnel totals) {}
+                          Integer months, boolean active, String note, String publicName, Instant since,
+                          boolean hasWallet, String code, Funnel totals) {}
 
-    public record Cabinet(int shareBps, Integer months, Instant since, String code, Funnel totals,
-                          List<Funnel> sources) {}
+    /** @param publicName how the audience sees the partner; accuracy = their own free predictions */
+    public record Cabinet(int shareBps, Integer months, Instant since, String code, String publicName,
+                          AuthorService.Accuracy accuracy, Funnel totals, List<Funnel> sources) {}
 
     private static final String SOURCES_SQL = """
             SELECT NULLIF(COALESCE(s.source, l.source), '') AS source, COALESCE(l.launches, 0) AS launches,
@@ -66,13 +67,15 @@ public class PartnerService {
     private final AppUserRepository users;
     private final ReferralService referrals;
     private final JdbcTemplate jdbc;
+    private final AuthorService authors;
 
     public PartnerService(PartnerRepository partners, AppUserRepository users, ReferralService referrals,
-                          JdbcTemplate jdbc) {
+                          JdbcTemplate jdbc, AuthorService authors) {
         this.partners = partners;
         this.users = users;
         this.referrals = referrals;
         this.jdbc = jdbc;
+        this.authors = authors;
     }
 
     public boolean isPartner(long userId) {
@@ -88,21 +91,22 @@ public class PartnerService {
      * must have opened the app once, so that they have an account and a wallet to be paid to.
      */
     @Transactional
-    public Partner add(String who, int shareBps, Integer months, String note) {
+    public Partner add(String who, int shareBps, Integer months, String note, String publicName) {
         AppUser user = findUser(who);
         if (partners.find(user.getId()).isPresent()) {
             throw ApiException.conflict("PARTNER_EXISTS", "This user is already a partner");
         }
-        partners.upsert(user.getId(), shareBps, months, true, blankToNull(note));
+        partners.upsert(user.getId(), shareBps, months, true, blankToNull(note), blankToNull(publicName));
         return toPartner(partners.find(user.getId()).orElseThrow());
     }
 
     @Transactional
-    public Partner update(long userId, int shareBps, Integer months, boolean active, String note) {
+    public Partner update(long userId, int shareBps, Integer months, boolean active, String note,
+                          String publicName) {
         if (partners.find(userId).isEmpty()) {
             throw ApiException.notFound("PARTNER_NOT_FOUND", "No such partner");
         }
-        partners.upsert(userId, shareBps, months, active, blankToNull(note));
+        partners.upsert(userId, shareBps, months, active, blankToNull(note), blankToNull(publicName));
         return toPartner(partners.find(userId).orElseThrow());
     }
 
@@ -111,7 +115,9 @@ public class PartnerService {
                 .orElseThrow(() -> ApiException.forbidden("NOT_PARTNER", "Only partners have a partner cabinet"));
         String code = referrals.codeOf(userId);
         List<Funnel> sources = sources(userId, code);
-        return new Cabinet(terms.shareBps(), terms.months(), terms.createdAt(), code, total(sources), sources);
+        AppUser user = users.findById(userId).orElseThrow();
+        return new Cabinet(terms.shareBps(), terms.months(), terms.createdAt(), code,
+                AuthorService.displayName(user, terms), authors.accuracy(userId), total(sources), sources);
     }
 
     private Partner toPartner(PartnerRepository.Terms t) {
@@ -120,7 +126,7 @@ public class PartnerService {
         String name = String.join(" ", u.getFirstName() == null ? "" : u.getFirstName(),
                 u.getLastName() == null ? "" : u.getLastName()).trim();
         return new Partner(u.getId(), u.getTelegramId(), u.getUsername(), name, t.shareBps(), t.months(),
-                t.active(), t.note(), t.createdAt(), u.getWalletAddress() != null && !u.getWalletAddress().isBlank(),
+                t.active(), t.note(), t.publicName(), t.createdAt(), u.getWalletAddress() != null && !u.getWalletAddress().isBlank(),
                 code, total(sources(u.getId(), code)));
     }
 

@@ -74,7 +74,7 @@ class ReferralTest {
         when(users.findById(1L)).thenReturn(Optional.of(user(1, null, null, "0xPartner")));
         when(users.findById(2L)).thenReturn(Optional.of(user(2, 1L, Instant.now().minus(Duration.ofDays(400)), "0xb")));
         when(partners.findActive(1L)).thenReturn(Optional.of(
-                new PartnerRepository.Terms(1, 5000, 24, true, null, Instant.now())));
+                new PartnerRepository.Terms(1, 5000, 24, true, null, null, Instant.now())));
 
         var split = service(users, partners).split(2L, BigInteger.valueOf(100_000)).orElseThrow();
         assertThat(split.referrerAmount()).as("50%, still within 24 months").isEqualTo(BigInteger.valueOf(50_000));
@@ -90,7 +90,7 @@ class ReferralTest {
         when(users.findById(1L)).thenReturn(Optional.of(user(1, null, null, "0xPartner")));
         when(users.findById(2L)).thenReturn(Optional.of(user(2, 1L, Instant.now().minus(Duration.ofDays(5000)), "0xb")));
         when(partners.findActive(1L)).thenReturn(Optional.of(
-                new PartnerRepository.Terms(1, 4000, null, true, null, Instant.now())));
+                new PartnerRepository.Terms(1, 4000, null, true, null, null, Instant.now())));
 
         var split = service(users, partners).split(2L, BigInteger.valueOf(100_000)).orElseThrow();
         assertThat(split.referrerAmount()).isEqualTo(BigInteger.valueOf(40_000));

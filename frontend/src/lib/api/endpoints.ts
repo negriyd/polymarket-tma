@@ -15,6 +15,8 @@ import type {
   PartnerView,
   PartnerTermsInput,
   PartnerCabinet,
+  Author,
+  Leaderboard,
   Prediction,
   TrackRecord,
   MarketList,
@@ -79,6 +81,17 @@ export const api = {
   updatePartner: (userId: number, body: PartnerTermsInput & { active: boolean }) =>
     http.put<PartnerView>(`/api/operator/partners/${userId}`, body).then((r) => r.data),
   getPartnerCabinet: () => http.get<PartnerCabinet>('/api/partner/me').then((r) => r.data),
+
+  getCurrentAuthor: (code?: string | null, conditionId?: string) =>
+    http
+      .get<{ author: Author | null }>('/api/authors/current', {
+        params: { ...(code ? { code } : {}), ...(conditionId ? { conditionId } : {}) },
+      })
+      .then((r) => r.data.author),
+  getLeaderboard: (code: string, week: 'current' | 'previous') =>
+    http
+      .get<Leaderboard>(`/api/authors/${encodeURIComponent(code)}/leaderboard`, { params: { week } })
+      .then((r) => r.data),
 
   getMyReferrals: () => http.get<ReferralInfo>('/api/referrals/me').then((r) => r.data),
 

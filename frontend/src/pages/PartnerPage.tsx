@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api/endpoints';
 import { Spinner } from '@/components/Spinner';
@@ -8,6 +9,8 @@ import { formatError } from '@/lib/errors';
 import { useLocale, useT } from '@/lib/i18n';
 import { PartnerStats } from '@/features/partners/PartnerStats';
 import { cleanTag, taggedLink, usd } from '@/features/partners/partnerLinks';
+import { LeaderboardTable } from '@/features/partners/LeaderboardTable';
+import type { Leaderboard } from '@/lib/api/types';
 
 /** Partner cabinet: terms, link generator with tags, and the funnel per tag. */
 export function PartnerPage() {
@@ -52,6 +55,22 @@ export function PartnerPage() {
             </p>
             <PartnerStats totals={c.totals} />
           </section>
+
+          <section className="space-y-1 rounded-xl bg-tg-secondary p-3">
+            <h2 className="text-sm font-semibold text-tg-text">{t('pt.accuracyTitle')}</h2>
+            <p className="text-xs text-tg-text">
+              {c.accuracy.pct != null
+                ? t('author.accuracy', {
+                    pct: c.accuracy.pct,
+                    correct: c.accuracy.correct,
+                    resolved: c.accuracy.resolved,
+                  })
+                : t('pt.accuracyPending', { n: c.accuracy.resolved, min: 5 })}
+            </p>
+            <p className="text-[11px] leading-snug text-tg-hint">{t('pt.accuracyHint', { name: c.publicName })}</p>
+          </section>
+
+          <WeeklyBoard code={c.code} link={me.data!.link} />
 
           <section className="space-y-2 rounded-xl bg-tg-secondary p-3">
             <h2 className="text-sm font-semibold text-tg-text">{t('pt.links')}</h2>
@@ -109,5 +128,65 @@ export function PartnerPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** The audience's weekly leaderboard with a ready-to-post text. */
+function WeeklyBoard({ code, link }: { code: string; link: string }) {
+  const t = useT();
+  const [week, setWeek] = useState<'current' | 'previous'>('previous');
+  const [copied, setCopied] = useState(false);
+  const board = useQuery({ queryKey: ['leaderboard', code, week], queryFn: () => api.getLeaderboard(code, week) });
+
+  const post = (b: Leaderboard) => {
+    const medals = ['🥇', '🥈', '🥉'];
+    const rows = b.top
+      .slice(0, 5)
+      .map((r) => `${medals[r.rank - 1] ?? `${r.rank}.`} ${r.name} — ${t('lb.score', { correct: r.correct, resolved: r.resolved })}`);
+    return [t('pt.postTitle', { name: b.author }), '', ...rows, '', t('pt.postCta'), `${link}_lb`].join('\n');
+  };
+  const copy = async (b: Leaderboard) => {
+    try {
+      await navigator.clipboard.writeText(post(b));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1_500);
+    } catch {
+      /* clipboard may be unavailable inside some Telegram clients */
+    }
+  };
+
+  return (
+    <section className="space-y-2 rounded-xl bg-tg-secondary p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-tg-text">🏆 {t('lb.title')}</h2>
+        <div className="flex gap-1">
+          {(['previous', 'current'] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => setWeek(w)}
+              className={clsx(
+                'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                w === week ? 'bg-tg-button text-tg-buttonText' : 'bg-tg-bg text-tg-hint',
+              )}
+            >
+              {t(w === 'current' ? 'lb.thisWeek' : 'lb.lastWeek')}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-[11px] leading-snug text-tg-hint">{t('pt.boardHint')}</p>
+      {board.data && <LeaderboardTable board={board.data} />}
+      {board.data && board.data.top.length > 0 && (
+        <button
+          type="button"
+          onClick={() => void copy(board.data)}
+          className="w-full rounded-lg bg-tg-button py-2 text-sm font-semibold text-tg-buttonText"
+        >
+          {copied ? t('common.copied') : t('pt.copyPost')}
+        </button>
+      )}
+      <p className="break-all font-mono text-[11px] text-tg-hint">{link}_lb</p>
+    </section>
   );
 }

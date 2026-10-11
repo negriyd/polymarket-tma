@@ -27,9 +27,9 @@ class ShareServiceTest {
 
     @Test
     void plainTextShowsOddsAndTheSharersPickInTheirLanguage() {
-        assertThat(ShareService.plainText(market("1"), null, ShareTexts.of(null)))
+        assertThat(ShareService.plainText(market("1"), null, ShareTexts.of(null), null))
                 .isEqualTo("📊 Will the ceasefire hold through Oct 31?\nYes 78% · No 22%");
-        assertThat(ShareService.plainText(market("1"), "yes", ShareTexts.of("ru")))
+        assertThat(ShareService.plainText(market("1"), "yes", ShareTexts.of("ru"), null))
                 .isEqualTo("📊 Will the ceasefire hold through Oct 31?\nДа 78% · Нет 22%\n\n"
                         + "Мой прогноз: Да\nА ты как думаешь?");
         assertThat(ShareTexts.of("de")).isEqualTo(ShareTexts.of(null));
@@ -41,8 +41,17 @@ class ShareServiceTest {
         var m = new MarketDto("1", "0xcid", "Will A&B < C?", null, null, null, null, null, null, null, null,
                 true, false, true, false, null, null, null, List.of("Yes", "No"), List.of("1", "2"),
                 List.of("0.96", "0.04"), true);
-        var card = ShareService.card(m, null, ShareTexts.of("ru"), "https://t.me/bot?startapp=m_1");
+        var card = ShareService.card(m, null, ShareTexts.of("ru"), "https://t.me/bot?startapp=m_1", null);
         String text = (String) ((java.util.Map<String, Object>) card.get("input_message_content")).get("message_text");
         assertThat(text).isEqualTo("📊 <b>Will A&amp;B &lt; C?</b>\nДа 96% · Нет 4%");
+
+        String line = ShareTexts.authorLine(ShareTexts.of("ru"),
+                new com.polymarket.tma.partner.AuthorService.Accuracy(18, 25, 72));
+        var partnerCard = ShareService.card(m, null, ShareTexts.of("ru"), "https://t.me/bot?startapp=m_1", line);
+        String partnerText = (String) ((java.util.Map<String, Object>) partnerCard.get("input_message_content"))
+                .get("message_text");
+        assertThat(partnerText).endsWith("\n\n<i>🎯 Точность прогнозов автора: 72% (18 из 25)</i>");
+        assertThat(ShareTexts.authorLine(ShareTexts.of("ru"),
+                new com.polymarket.tma.partner.AuthorService.Accuracy(2, 3, null))).as("too few results").isNull();
     }
 }

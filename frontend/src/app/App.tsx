@@ -15,6 +15,7 @@ import { DeepLinkHandler } from '@/features/share/DeepLinkHandler';
 import { OperatorStatsPage } from '@/pages/OperatorStatsPage';
 import { OperatorPartnersPage } from '@/pages/OperatorPartnersPage';
 import { PartnerPage } from '@/pages/PartnerPage';
+import { LeaderboardPage } from '@/pages/LeaderboardPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -74,6 +75,7 @@ export function App() {
                 <Route path="operator" element={<OperatorStatsPage />} />
                 <Route path="operator/partners" element={<OperatorPartnersPage />} />
                 <Route path="partner" element={<PartnerPage />} />
+                <Route path="leaderboard/:code" element={<LeaderboardPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>

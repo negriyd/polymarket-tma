@@ -23,8 +23,8 @@ import reactor.core.publisher.Mono;
 /**
  * <pre>
  *   GET  /api/operator/partners                         -> partners with their terms and totals (operator only)
- *   POST /api/operator/partners      {user, shareBps, months?, note?} -> make a user a partner
- *   PUT  /api/operator/partners/{id} {shareBps, months?, active, note?} -> change terms / pause
+ *   POST /api/operator/partners      {user, shareBps, months?, note?, publicName?} -> make a user a partner
+ *   PUT  /api/operator/partners/{id} {shareBps, months?, active, note?, publicName?} -> change terms / pause
  *   GET  /api/partner/me                        -> partner cabinet: terms, link, funnel per tag
  * </pre>
  * {@code months} null = lifetime.
@@ -45,12 +45,14 @@ public class PartnerController {
     public record AddRequest(@NotBlank @Size(max = 80) String user,
                              @NotNull @Min(1) @Max(10_000) Integer shareBps,
                              @Min(1) @Max(1_200) Integer months,
-                             @Size(max = 256) String note) {}
+                             @Size(max = 256) String note,
+                             @Size(max = 64) String publicName) {}
 
     public record UpdateRequest(@NotNull @Min(1) @Max(10_000) Integer shareBps,
                                 @Min(1) @Max(1_200) Integer months,
                                 @NotNull Boolean active,
-                                @Size(max = 256) String note) {}
+                                @Size(max = 256) String note,
+                                @Size(max = 64) String publicName) {}
 
     /** @param link invite link without a tag; the cabinet appends {@code _s<tag>} */
     public record PartnerView(PartnerService.Partner partner, String link) {}
@@ -67,7 +69,7 @@ public class PartnerController {
     @PostMapping("/api/operator/partners")
     public Mono<PartnerView> add(@AuthenticationPrincipal AuthPrincipal principal, @Valid @RequestBody AddRequest req) {
         requireOperator(principal);
-        PartnerService.Partner p = service.add(req.user(), req.shareBps(), req.months(), req.note());
+        PartnerService.Partner p = service.add(req.user(), req.shareBps(), req.months(), req.note(), req.publicName());
         return bot.username().map(name -> new PartnerView(p, link(name, p.code())));
     }
 
@@ -75,7 +77,8 @@ public class PartnerController {
     public Mono<PartnerView> update(@AuthenticationPrincipal AuthPrincipal principal, @PathVariable long userId,
                                     @Valid @RequestBody UpdateRequest req) {
         requireOperator(principal);
-        PartnerService.Partner p = service.update(userId, req.shareBps(), req.months(), req.active(), req.note());
+        PartnerService.Partner p = service.update(userId, req.shareBps(), req.months(), req.active(), req.note(),
+                req.publicName());
         return bot.username().map(name -> new PartnerView(p, link(name, p.code())));
     }
 

@@ -6,6 +6,7 @@ import com.polymarket.tma.market.MarketService;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.i18n.MarketLocale;
 import com.polymarket.tma.market.i18n.MarketTranslationService;
+import com.polymarket.tma.partner.AuthorService;
 import com.polymarket.tma.referral.ReferralService;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -28,9 +29,11 @@ public class InlineQueryService {
     private final TelegramBotClient bot;
     private final AppUserRepository users;
     private final ReferralService referrals;
+    private final AuthorService authors;
 
     public InlineQueryService(MarketService markets, MarketTranslationService translations, TelegramBotClient bot,
-                              AppUserRepository users, ReferralService referrals) {
+                              AppUserRepository users, ReferralService referrals, AuthorService authors) {
+        this.authors = authors;
         this.markets = markets;
         this.translations = translations;
         this.bot = bot;
@@ -43,22 +46,22 @@ public class InlineQueryService {
         String text = inlineQuery.path("query").asText("").trim();
         long telegramId = inlineQuery.path("from").path("id").asLong();
         String locale = MarketLocale.fromHeader(inlineQuery.path("from").path("language_code").asText(null));
-        String refCode = users.findByTelegramId(telegramId).map(u -> referrals.codeOf(u.getId())).orElse(null);
+        var user = users.findByTelegramId(telegramId);
+        String refCode = user.map(u -> referrals.codeOf(u.getId())).orElse(null);
         ShareTexts.Texts texts = ShareTexts.of(locale);
+        String authorLine = ShareTexts.authorLine(texts,
+                user.flatMap(u -> authors.publicAccuracy(u.getId())).orElse(null));
 
         return markets.list(0, RESULTS, "volume24hr", false, null, text.isEmpty() ? null : text)
                 .flatMap(resp -> translations.translateMarkets(resp.items(), locale))
                 .zipWith(bot.username())
                 .map(tuple -> tuple.getT1().stream()
                         .filter(m -> m.id() != null && m.id().matches("\\d+"))
-                        .map(m -> card(m, texts, ShareService.marketLink(tuple.getT2(), m, null, refCode)))
+                        .map(m -> ShareService.card(m, null, texts,
+                                ShareService.marketLink(tuple.getT2(), m, null, refCode), authorLine))
                         .toList())
                 .flatMap(results -> bot.answerInlineQuery(queryId, results))
                 .doOnError(e -> log.warn("Inline query '{}' failed: {}", text, e.toString()))
                 .onErrorResume(e -> Mono.empty());
-    }
-
-    private static Map<String, Object> card(MarketDto m, ShareTexts.Texts texts, String link) {
-        return ShareService.card(m, null, texts, link);
     }
 }

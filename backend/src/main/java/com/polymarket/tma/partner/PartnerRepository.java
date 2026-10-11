@@ -15,8 +15,10 @@ public class PartnerRepository {
     /**
      * @param shareBps partner's share of the platform fee (5000 = 50%)
      * @param months   how long after each invited user's sign-up the partner earns; null = lifetime
+     * @param publicName what the partner's audience sees (badge, leaderboard); null = Telegram name
      */
-    public record Terms(long userId, int shareBps, Integer months, boolean active, String note, Instant createdAt) {}
+    public record Terms(long userId, int shareBps, Integer months, boolean active, String note,
+                        String publicName, Instant createdAt) {}
 
     private final JdbcTemplate jdbc;
 
@@ -38,17 +40,19 @@ public class PartnerRepository {
         return jdbc.query("SELECT * FROM partner ORDER BY active DESC, created_at DESC", PartnerRepository::map);
     }
 
-    public void upsert(long userId, int shareBps, Integer months, boolean active, String note) {
+    public void upsert(long userId, int shareBps, Integer months, boolean active, String note, String publicName) {
         jdbc.update("""
-                INSERT INTO partner (user_id, share_bps, months, active, note) VALUES (?, ?, ?, ?, ?)
+                INSERT INTO partner (user_id, share_bps, months, active, note, public_name) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (user_id) DO UPDATE SET share_bps = EXCLUDED.share_bps, months = EXCLUDED.months,
-                    active = EXCLUDED.active, note = EXCLUDED.note, updated_at = NOW()
-                """, userId, shareBps, months, active, note);
+                    active = EXCLUDED.active, note = EXCLUDED.note, public_name = EXCLUDED.public_name,
+                    updated_at = NOW()
+                """, userId, shareBps, months, active, note, publicName);
     }
 
     private static Terms map(ResultSet rs, int i) throws SQLException {
         int months = rs.getInt("months");
         return new Terms(rs.getLong("user_id"), rs.getInt("share_bps"), rs.wasNull() ? null : months,
-                rs.getBoolean("active"), rs.getString("note"), rs.getTimestamp("created_at").toInstant());
+                rs.getBoolean("active"), rs.getString("note"), rs.getString("public_name"),
+                rs.getTimestamp("created_at").toInstant());
     }
 }

@@ -14,17 +14,25 @@ interface Terms {
   lifetime: boolean;
   months: string;
   note: string;
+  publicName: string;
 }
 
-const DEFAULT_TERMS: Terms = { sharePct: '50', lifetime: false, months: '24', note: '' };
+const DEFAULT_TERMS: Terms = { sharePct: '50', lifetime: false, months: '24', note: '', publicName: '' };
 
 /** Form values → request body, or null while something is out of range. */
-function toInput(f: Terms): { shareBps: number; months: number | null; note: string } | null {
+function toInput(
+  f: Terms,
+): { shareBps: number; months: number | null; note: string; publicName: string } | null {
   const pct = Number(f.sharePct);
   const months = Number(f.months);
   if (!Number.isFinite(pct) || pct <= 0 || pct > 100) return null;
   if (!f.lifetime && (!Number.isInteger(months) || months < 1 || months > 1200)) return null;
-  return { shareBps: Math.round(pct * 100), months: f.lifetime ? null : months, note: f.note.trim() };
+  return {
+    shareBps: Math.round(pct * 100),
+    months: f.lifetime ? null : months,
+    note: f.note.trim(),
+    publicName: f.publicName.trim(),
+  };
 }
 
 const input = 'w-full rounded-lg bg-tg-bg px-3 py-2 text-sm text-tg-text outline-none placeholder:text-tg-hint';
@@ -64,6 +72,15 @@ function TermsFields({ value, onChange }: { value: Terms; onChange: (v: Terms) =
           </label>
         </div>
       </div>
+      <label className="block">
+        <span className="text-[11px] text-tg-hint">{t('opp.publicName')}</span>
+        <input
+          className={input}
+          maxLength={64}
+          value={value.publicName}
+          onChange={(e) => onChange({ ...value, publicName: e.target.value })}
+        />
+      </label>
       <label className="block">
         <span className="text-[11px] text-tg-hint">{t('opp.note')}</span>
         <input
@@ -125,6 +142,7 @@ function PartnerCard({ view }: { view: PartnerView }) {
     lifetime: p.months == null,
     months: String(p.months ?? 24),
     note: p.note ?? '',
+    publicName: p.publicName ?? '',
   });
   const body = toInput(terms);
   const save = useMutation({
@@ -141,7 +159,7 @@ function PartnerCard({ view }: { view: PartnerView }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-tg-text">
-            {p.username ? `@${p.username}` : p.name || p.telegramId}
+            {p.publicName ?? (p.username ? `@${p.username}` : p.name || p.telegramId)}
             {!p.active && <span className="ml-2 text-xs font-normal text-rose-500">{t('opp.paused')}</span>}
           </p>
           <p className="text-xs text-tg-hint">

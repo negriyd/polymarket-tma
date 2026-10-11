@@ -8,6 +8,8 @@ import { LanguagePicker } from '@/components/LanguagePicker';
 import { useT } from '@/lib/i18n';
 import { FirstBetChecklist } from '@/features/onboarding/FirstBetChecklist';
 import { isWalletConfigured } from '@/features/wallet/useWallet';
+import { AuthorBadge } from '@/features/partners/AuthorBadge';
+import { RiskNote } from '@/components/RiskNote';
 
 export function HomePage() {
   const user = useAuthStore((s) => s.user);
@@ -29,6 +31,8 @@ export function HomePage() {
         <LanguagePicker />
       </header>
 
+      <AuthorBadge />
+
       {isWalletConfigured() && <FirstBetChecklist />}
 
       {featured.isLoading && <Spinner label={t('markets.loading')} />}
@@ -41,6 +45,8 @@ export function HomePage() {
           <MarketCard key={m.conditionId} market={m} />
         ))}
       </div>
+
+      <RiskNote />
     </div>
   );
 }

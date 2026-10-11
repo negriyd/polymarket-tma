@@ -17,6 +17,9 @@ import { outcomeText, Trans, useLocale, useT } from '@/lib/i18n';
 import { ShareButton } from '@/features/share/ShareButton';
 import { isTradable, marketState } from '@/lib/marketState';
 import { PredictionBlock } from '@/features/predictions/PredictionBlock';
+import { AuthorBadge } from '@/features/partners/AuthorBadge';
+import { CardImageButtons } from '@/features/share/CardImageButtons';
+import { RiskNote } from '@/components/RiskNote';
 
 export function MarketDetailPage() {
   const { marketId = '' } = useParams();
@@ -245,6 +248,8 @@ export function MarketDetailPage() {
         />
       </section>
 
+      <AuthorBadge conditionId={m.conditionId} />
+
       <PredictionBlock market={m} />
 
       {betsCfg.data?.enabled && betPool.data && (
@@ -288,6 +293,8 @@ export function MarketDetailPage() {
         ))}
 
       {yesTok && <PriceChart conditionId={m.conditionId} tokenId={yesTok} currentPrice={yesPrice} />}
+
+      <CardImageButtons marketKey={m.id ?? m.conditionId} />
 
       <section className="grid grid-cols-3 gap-2">
         <Stat label={t('market.vol24h')} value={fmt(m.volume24hr ?? m.volume24h)} />
@@ -409,6 +416,8 @@ export function MarketDetailPage() {
           </>
         )}
       </section>
+
+      <RiskNote />
     </div>
   );
 }

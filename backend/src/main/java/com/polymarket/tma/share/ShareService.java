@@ -5,6 +5,7 @@ import com.polymarket.tma.common.ApiException;
 import com.polymarket.tma.market.MarketService;
 import com.polymarket.tma.market.dto.MarketDto;
 import com.polymarket.tma.market.i18n.MarketTranslationService;
+import com.polymarket.tma.partner.AuthorService;
 import com.polymarket.tma.referral.ReferralService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,14 +31,16 @@ public class ShareService {
     private final TelegramBotClient bot;
     private final AppUserRepository users;
     private final ReferralService referrals;
+    private final AuthorService authors;
 
     public ShareService(MarketService markets, MarketTranslationService translations, TelegramBotClient bot,
-                        AppUserRepository users, ReferralService referrals) {
+                        AppUserRepository users, ReferralService referrals, AuthorService authors) {
         this.markets = markets;
         this.translations = translations;
         this.bot = bot;
         this.users = users;
         this.referrals = referrals;
+        this.authors = authors;
     }
 
     public Mono<ShareDtos.MarketShare> shareMarket(long userId, ShareDtos.MarketShareRequest req, String locale) {
@@ -46,14 +49,15 @@ public class ShareService {
                 .getTelegramId();
         ShareTexts.Texts texts = ShareTexts.of(locale);
         String refCode = referrals.codeOf(userId);
+        String authorLine = ShareTexts.authorLine(texts, authors.publicAccuracy(userId).orElse(null));
         return markets.get(req.marketKey())
                 .flatMap(m -> translations.translateMarket(m, locale))
                 .zipWith(bot.username())
                 .flatMap(tuple -> {
                     MarketDto m = tuple.getT1();
                     String link = marketLink(tuple.getT2(), m, req.side(), refCode);
-                    String plain = plainText(m, req.side(), texts);
-                    return bot.savePreparedInlineMessage(telegramId, card(m, req.side(), texts, link))
+                    String plain = plainText(m, req.side(), texts, authorLine);
+                    return bot.savePreparedInlineMessage(telegramId, card(m, req.side(), texts, link, authorLine))
                             .map(id -> new ShareDtos.MarketShare(link, plain, id))
                             .onErrorResume(e -> {
                                 // Older clients / API hiccups: the app falls back to t.me/share with the link.
@@ -106,7 +110,7 @@ public class ShareService {
         }
     }
 
-    static String plainText(MarketDto m, String side, ShareTexts.Texts t) {
+    static String plainText(MarketDto m, String side, ShareTexts.Texts t, String authorLine) {
         StringBuilder sb = new StringBuilder("📊 ").append(m.question());
         String odds = oddsLine(m, t);
         if (!odds.isEmpty()) {
@@ -115,6 +119,9 @@ public class ShareService {
         if (side != null) {
             sb.append("\n\n").append(String.format(t.myPick(), "yes".equals(side) ? t.yes() : t.no()))
                     .append("\n").append(t.yourTurn());
+        }
+        if (authorLine != null) {
+            sb.append("\n\n").append(authorLine);
         }
         return sb.toString();
     }
@@ -127,8 +134,12 @@ public class ShareService {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    /** Telegram inline result for a market card: odds text, image preview and an "Open market" button. */
-    public static Map<String, Object> card(MarketDto m, String side, ShareTexts.Texts t, String link) {
+    /**
+     * Telegram inline result for a market card: odds text, image preview and an "Open market" button.
+     * {@code authorLine}: a partner's public accuracy, or null.
+     */
+    public static Map<String, Object> card(MarketDto m, String side, ShareTexts.Texts t, String link,
+                                           String authorLine) {
         StringBuilder html = new StringBuilder("📊 <b>").append(escape(m.question())).append("</b>");
         String odds = oddsLine(m, t);
         if (!odds.isEmpty()) {
@@ -138,6 +149,9 @@ public class ShareService {
             html.append("\n\n").append(escape(
                     String.format(t.myPick(), "yes".equals(side) ? t.yes() : t.no())))
                     .append("\n").append(escape(t.yourTurn()));
+        }
+        if (authorLine != null) {
+            html.append("\n\n<i>").append(escape(authorLine)).append("</i>");
         }
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("message_text", html.toString());
