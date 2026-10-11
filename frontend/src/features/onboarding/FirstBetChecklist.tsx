@@ -54,6 +54,12 @@ export function FirstBetChecklist() {
   });
 
   if (hidden || !w.ready) return null;
+  // Privy reports "authenticated" a moment before the embedded wallet's address is known.
+  if (w.authenticated && !w.address) return null;
+  // Wait until every step's data has loaded: rendering on partial data flashes the card for users
+  // who have already done everything. A failed query counts as settled (the step shows as not done).
+  const settled = (q: { isPending: boolean; fetchStatus: string }) => !q.isPending || q.fetchStatus === 'idle';
+  if (address && !(settled(clob) && settled(dw) && settled(positions))) return null;
 
   const balance = dw.data?.collateralBalance != null ? BigInt(dw.data.collateralBalance) : 0n;
   const steps: Step[] = [
