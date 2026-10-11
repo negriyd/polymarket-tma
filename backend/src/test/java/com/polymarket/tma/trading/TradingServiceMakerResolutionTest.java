@@ -81,7 +81,7 @@ class TradingServiceMakerResolutionTest {
 
         ArgumentCaptor<String> maker = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> signer = ArgumentCaptor.forClass(String.class);
-        verify(builder).build(maker.capture(), signer.capture(), eq(req), eq(false));
+        verify(builder).build(maker.capture(), signer.capture(), sameOrder(req), eq(false));
         assertThat(maker.getValue()).isEqualTo(WALLET);
         assertThat(signer.getValue()).isEqualTo(WALLET);
     }
@@ -94,7 +94,7 @@ class TradingServiceMakerResolutionTest {
 
         ArgumentCaptor<String> maker = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> signer = ArgumentCaptor.forClass(String.class);
-        verify(builder).build(maker.capture(), signer.capture(), eq(req), eq(false));
+        verify(builder).build(maker.capture(), signer.capture(), sameOrder(req), eq(false));
         assertThat(maker.getValue()).isEqualTo(PROXY);
         assertThat(signer.getValue()).isEqualTo(WALLET);
     }
@@ -129,7 +129,7 @@ class TradingServiceMakerResolutionTest {
 
         service.prepare(1L, req);
 
-        verify(builder).build(eq(depositWallet), eq(WALLET), eq(req), eq(false));
+        verify(builder).build(eq(depositWallet), eq(WALLET), sameOrder(req), eq(false));
     }
 
     @Test
@@ -167,7 +167,7 @@ class TradingServiceMakerResolutionTest {
 
         service.prepare(1L, req);
 
-        verify(builder).build(eq(WALLET), eq(WALLET), eq(req), eq(true));
+        verify(builder).build(eq(WALLET), eq(WALLET), sameOrder(req), eq(true));
     }
 
     @Test
@@ -180,7 +180,7 @@ class TradingServiceMakerResolutionTest {
 
         // Default is `false` so the user gets a clear CLOB error if the market really was negRisk
         // rather than the prepare endpoint crashing.
-        verify(builder).build(eq(WALLET), eq(WALLET), eq(req), eq(false));
+        verify(builder).build(eq(WALLET), eq(WALLET), sameOrder(req), eq(false));
     }
 
     private static OrderDtos.PrepareOrderRequest req(OrderDtos.SignatureType type, String makerAddress) {
@@ -203,6 +203,15 @@ class TradingServiceMakerResolutionTest {
         Map<String, Object> td = new LinkedHashMap<>();
         td.put("message", message);
         return td;
+    }
+
+    /** The service normalises size to 2 decimals, so match on content rather than identity. */
+    private static OrderDtos.PrepareOrderRequest sameOrder(OrderDtos.PrepareOrderRequest req) {
+        return org.mockito.ArgumentMatchers.argThat(r -> r != null
+                && r.tokenId().equals(req.tokenId())
+                && r.price().compareTo(req.price()) == 0
+                && r.size().compareTo(req.size()) == 0
+                && r.signatureType() == req.signatureType());
     }
 
     private static MarketDto stubMarket(boolean negRisk) {

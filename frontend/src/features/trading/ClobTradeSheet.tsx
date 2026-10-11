@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useSignTypedData, useWallets, type SignTypedDataParams } from '@privy-io/react-auth';
@@ -101,6 +101,10 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
   const cid = market.conditionId;
 
   const [priceStr, setPriceStr] = useState('');
+  const tick = market.orderPriceMinTickSize ?? 0.01;
+  const tickDecimals = Math.max(0, Math.round(-Math.log10(tick)));
+  const toTick = useCallback((p: number) => p.toFixed(tickDecimals), [tickDecimals]);
+  const minShares = market.orderMinSize ?? null;
   const [usdcStr, setUsdcStr] = useState('5');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -127,16 +131,23 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
     if (!open) return;
     setError(null);
     setSuccess(null);
-    setPriceStr(refPrice != null ? String(Math.min(0.99, Math.max(0.01, Number(refPrice)))) : '0.5');
-  }, [open, outcome, refPrice, market.conditionId]);
+    // Round the reference price up to the tick: a BUY a cent above mid usually meets the ask.
+    const start = refPrice != null ? Math.ceil(Number(refPrice) / tick - 1e-9) * tick : 0.5;
+    setPriceStr(toTick(Math.min(1 - tick, Math.max(tick, start))));
+  }, [open, outcome, refPrice, market.conditionId, tick, toTick]);
 
   const priceNum = Number(priceStr);
   const usdcNum = Number(usdcStr);
-  const priceOk = Number.isFinite(priceNum) && priceNum > 0 && priceNum < 1;
+  const onTick = Math.abs(priceNum / tick - Math.round(priceNum / tick)) < 1e-6;
+  const priceOk = Number.isFinite(priceNum) && priceNum > 0 && priceNum < 1 && onTick;
   const usdcOk = Number.isFinite(usdcNum) && usdcNum > 0;
-  const shares = priceOk && usdcOk ? usdcNum / priceNum : null;
+  // CLOB takes sizes in whole cents of a share; cut down so the order never exceeds the spend.
+  const shares = priceOk && usdcOk ? Math.floor((usdcNum / priceNum) * 100 + 1e-9) / 100 : null;
+  const tooSmall = shares != null && minShares != null && shares < minShares;
+  const minSpend = minShares != null && priceOk ? Math.ceil(minShares * priceNum * 100) / 100 : null;
   const canSubmit =
-    w.ready && w.authenticated && !!w.address && ready && !!tokenId && !!cid && shares != null && shares > 0;
+    w.ready && w.authenticated && !!w.address && ready && !!tokenId && !!cid && shares != null && shares > 0 &&
+    !tooSmall;
 
   const trade = useMutation({
     mutationFn: async () => {
@@ -152,7 +163,7 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
         tokenId,
         side: 'BUY',
         price: priceNum,
-        size: Math.round(shares * 1_000_000) / 1_000_000,
+        size: shares,
         signatureType: 'POLY_1271',
       });
 
@@ -266,15 +277,19 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
             <input
               type="number"
               inputMode="decimal"
-              step="0.001"
-              min={0.01}
-              max={0.99}
+              step={tick}
+              min={tick}
+              max={1 - tick}
               value={priceStr}
               onChange={(e) => setPriceStr(e.target.value)}
               className="mt-1 w-full rounded-xl border border-tg-hint/20 bg-tg-secondary px-3 py-2 text-tg-text"
             />
             <span className="mt-0.5 block text-[10px] text-tg-hint">
-              {refPrice != null ? `Market ~${Math.round(refPrice * 100)}¢` : 'Enter limit price (0–1)'}
+              {!onTick && priceStr
+                ? `Use steps of ${toTick(tick)}`
+                : refPrice != null
+                  ? `Market ~${Math.round(refPrice * 100)}¢`
+                  : 'Enter limit price (0–1)'}
             </span>
           </label>
 
@@ -291,8 +306,13 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
             />
             {shares != null && priceOk && (
               <p className="mt-1 text-xs text-tg-hint">
-                ≈ {shares.toFixed(4)} shares
+                ≈ {shares.toFixed(2)} shares
                 {balance != null && usdcNum > balance ? ' · exceeds trading wallet balance' : ''}
+              </p>
+            )}
+            {tooSmall && minSpend != null && (
+              <p className="mt-0.5 text-xs text-amber-500">
+                Minimum order is {minShares} shares — spend at least {minSpend.toFixed(2)} pUSD at this price.
               </p>
             )}
             {balance != null && (

@@ -47,6 +47,21 @@ public record MarketDto(
          * means the regular CTF Exchange. Submitting against the wrong one returns
          * {@code 400 "order_version_mismatch"}.
          */
-        @JsonProperty("negRisk") Boolean negRisk
+        @JsonProperty("negRisk") Boolean negRisk,
+        /** CLOB price grid (0.01 or 0.001); an off-grid limit price is rejected by CLOB. */
+        @JsonProperty("orderPriceMinTickSize") BigDecimal orderPriceMinTickSize,
+        /** Smallest order CLOB accepts, in outcome shares (typically 5). */
+        @JsonProperty("orderMinSize") BigDecimal orderMinSize
 ) {
+    /** Market without CLOB order constraints (tests, cache entries written before they were mapped). */
+    public MarketDto(String id, String conditionId, String question, String slug, String description,
+                     String category, String image, String icon, Instant endDate, Instant gameStartTime,
+                     String marketSlug, Boolean active, Boolean closed, Boolean acceptingOrders,
+                     Boolean archived, BigDecimal volume, BigDecimal volume24h, BigDecimal liquidity,
+                     List<String> outcomes, List<String> clobTokenIds, List<String> outcomePrices,
+                     Boolean negRisk) {
+        this(id, conditionId, question, slug, description, category, image, icon, endDate, gameStartTime,
+                marketSlug, active, closed, acceptingOrders, archived, volume, volume24h, liquidity,
+                outcomes, clobTokenIds, outcomePrices, negRisk, null, null);
+    }
 }

@@ -16,6 +16,7 @@ import com.polymarket.tma.trading.relayer.DepositWalletDtos;
 import com.polymarket.tma.trading.relayer.DepositWalletService;
 import com.polymarket.tma.trading.repo.OrderAuditRepository;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.math.BigInteger;
 import java.time.Duration;
 import org.slf4j.Logger;
@@ -30,6 +31,8 @@ public class TradingService {
     private static final Logger log = LoggerFactory.getLogger(TradingService.class);
 
     /** USDC has 6 decimals; used to humanise fee amounts on the wire. */
+    private static final BigDecimal DEFAULT_TICK = new BigDecimal("0.01");
+    private static final int SIZE_DECIMALS = 2;
     private static final BigDecimal USDC_DECIMALS_FACTOR = new BigDecimal(BigInteger.valueOf(1_000_000L));
 
     private final OrderBuilder builder;
@@ -71,7 +74,9 @@ public class TradingService {
         }
         String signer = user.getWalletAddress();
         String maker = resolveMaker(user, req);
-        boolean negRisk = isNegRisk(req.conditionId());
+        MarketDto market = lookupMarket(req.conditionId());
+        boolean negRisk = market != null && Boolean.TRUE.equals(market.negRisk());
+        req = fitToOrderRules(req, market);
         BuiltOrder built = builder.build(maker, signer, req, negRisk);
         @SuppressWarnings("unchecked")
         java.util.Map<String, Object> domain = (java.util.Map<String, Object>) built.typedData().get("domain");
@@ -107,19 +112,47 @@ public class TradingService {
      * market was actually negRisk, but the user gets a clear error rather than a surprise
      * crash. The cached path is sub-millisecond so blocking here is fine.
      */
-    private boolean isNegRisk(String conditionId) {
+    private MarketDto lookupMarket(String conditionId) {
         try {
             MarketDto market = marketService.get(conditionId).block(Duration.ofSeconds(3));
             if (market == null) {
                 log.warn("MarketService returned null for conditionId={} — defaulting negRisk=false", conditionId);
-                return false;
+                return null;
             }
             log.debug("Market {} -> negRisk field = {}", conditionId, market.negRisk());
-            return Boolean.TRUE.equals(market.negRisk());
+            return market;
         } catch (RuntimeException e) {
             log.warn("Failed to resolve negRisk for {}: {}", conditionId, e.toString());
-            return false;
+            return null;
         }
+    }
+
+    /**
+     * CLOB derives the price as makerAmount / takerAmount and rejects it unless it lands exactly on
+     * the market's tick grid, so the price must already be on the grid and the size is cut to
+     * whole cents of a share (2 decimals) — then size × price has at most 6 decimals and the
+     * amounts divide back to the exact price. Also enforces the market's minimum order size.
+     */
+    static OrderDtos.PrepareOrderRequest fitToOrderRules(OrderDtos.PrepareOrderRequest req, MarketDto market) {
+        BigDecimal tick = market == null || market.orderPriceMinTickSize() == null
+                ? DEFAULT_TICK : market.orderPriceMinTickSize();
+        BigDecimal price = req.price();
+        if (price.signum() <= 0 || price.compareTo(BigDecimal.ONE) >= 0
+                || price.remainder(tick).signum() != 0) {
+            throw ApiException.badRequest("PRICE_OFF_TICK",
+                    "Price must be between 0 and 1 in steps of " + tick.stripTrailingZeros().toPlainString());
+        }
+        BigDecimal size = req.size().setScale(SIZE_DECIMALS, RoundingMode.DOWN);
+        BigDecimal minSize = market == null ? null : market.orderMinSize();
+        if (size.signum() <= 0 || (minSize != null && size.compareTo(minSize) < 0)) {
+            BigDecimal min = minSize == null ? BigDecimal.ONE.movePointLeft(SIZE_DECIMALS) : minSize;
+            throw ApiException.badRequest("ORDER_TOO_SMALL",
+                    "Minimum order is " + min.stripTrailingZeros().toPlainString() + " shares (≈ $"
+                            + min.multiply(price).setScale(2, RoundingMode.UP).toPlainString()
+                            + " at this price)");
+        }
+        return new OrderDtos.PrepareOrderRequest(req.conditionId(), req.tokenId(), req.side(), price, size,
+                req.orderType(), req.signatureType(), req.expiration(), req.makerAddress());
     }
 
     /**

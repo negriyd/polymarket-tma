@@ -10,6 +10,7 @@
  *   deploy                     WALLET-CREATE via relayer (needs builder creds, gasless)
  *   wrap <usdc>                deposit wallet wraps its own USDC.e into pUSD (gasless batch)
  *   fund <usdc>                EOA wraps its USDC.e into pUSD for the deposit wallet (EOA pays POL gas)
+ *   send <to> <pusd|all>       transfer pUSD from the deposit wallet to any Polygon address (gasless batch)
  *   approve                    8 trading approvals from the deposit wallet (gasless batch)
  *   auth                       L1 -> API key (POLY_ADDRESS = EOA), saved to .creds.json
  *   balance                    CLOB view of pUSD balance/allowance for signature_type=3
@@ -186,6 +187,19 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
             { target: USDC_E, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [ONRAMP, raw] }) },
             { target: ONRAMP, value: "0", data: encodeFunctionData({ abi: onrampAbi, functionName: "wrap", args: [USDC_E, dw, raw] }) },
         ], "wrap");
+    },
+
+    async send([to, amount]) {
+        if (!to || !/^0x[0-9a-fA-F]{40}$/.test(to) || !amount) throw new Error("usage: send <0xRecipient> <pusd|all>");
+        const dw = await depositWallet();
+        const balance = await publicClient.readContract({ address: PUSD, abi: erc20Abi, functionName: "balanceOf", args: [dw] });
+        const raw = amount === "all" ? balance : parseUnits(amount, 6);
+        if (raw <= 0n || raw > balance) throw new Error(`amount ${formatUnits(raw, 6)} vs balance ${formatUnits(balance, 6)} pUSD`);
+        console.log(`Sending ${formatUnits(raw, 6)} pUSD from ${dw} to ${to} (Polygon)`);
+        await runBatch([
+            { target: PUSD, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [to as Address, raw] }) },
+        ], "send");
+        console.log(`Recipient pUSD now: ${await erc20Balance(PUSD, to as Address)}`);
     },
 
     async fund([amount]) {

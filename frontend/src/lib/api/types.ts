@@ -38,6 +38,11 @@ export interface Market {
   outcomes?: string[];
   clobTokenIds?: string[];
   outcomePrices?: string[];
+  negRisk?: boolean;
+  /** CLOB price step (0.01 or 0.001); off-grid limit prices are rejected. */
+  orderPriceMinTickSize?: number;
+  /** Smallest order CLOB accepts, in shares. */
+  orderMinSize?: number;
 }
 
 export interface MarketList {
