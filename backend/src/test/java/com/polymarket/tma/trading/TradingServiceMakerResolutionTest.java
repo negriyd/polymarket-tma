@@ -205,6 +205,29 @@ class TradingServiceMakerResolutionTest {
         return td;
     }
 
+    @Test
+    void submitAuditsMarketConditionIdAndTokenIdSeparately() {
+        Map<String, Object> wire = new LinkedHashMap<>();
+        wire.put("tokenId", "110824900285475772037944791913429866572959836430651732935809182506257481598733");
+        wire.put("side", 0);
+        BuiltOrder built = new BuiltOrder("0xhash", java.math.BigInteger.valueOf(2_700_000),
+                java.math.BigInteger.valueOf(5_000_000), stubTypedData(), wire, "0xcid");
+        when(pending.get(1L, "0xhash")).thenReturn(built);
+        when(builder.finalizeSignature(built, "0xsig")).thenReturn("0xfinal");
+        when(clob.submit(eq(built), eq("0xfinal"), eq(WALLET), any()))
+                .thenReturn(Mono.just(new OrderDtos.SubmittedOrderResponse("0xhash", "matched", null)));
+
+        service.submit(1L, new OrderDtos.SubmitOrderRequest("0xhash", "0xsig", null)).block();
+
+        var audit = ArgumentCaptor.forClass(com.polymarket.tma.trading.entity.OrderAudit.class);
+        org.mockito.Mockito.verify(auditRepo, org.mockito.Mockito.times(2)).save(audit.capture());
+        var saved = audit.getValue();
+        assertThat(saved.getConditionId()).isEqualTo("0xcid");
+        assertThat(saved.getTokenId()).isEqualTo(wire.get("tokenId"));
+        assertThat(saved.getSide()).isEqualTo("BUY");
+        assertThat(saved.getStatus()).isEqualTo("matched");
+    }
+
     /** The service normalises size to 2 decimals, so match on content rather than identity. */
     private static OrderDtos.PrepareOrderRequest sameOrder(OrderDtos.PrepareOrderRequest req) {
         return org.mockito.ArgumentMatchers.argThat(r -> r != null

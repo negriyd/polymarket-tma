@@ -112,6 +112,16 @@ public class TradingService {
      * market was actually negRisk, but the user gets a clear error rather than a surprise
      * crash. The cached path is sub-millisecond so blocking here is fine.
      */
+    /** The EIP-712 order carries side as uint8 (0 = BUY); the audit stores the name. */
+    private static String sideName(Object side) {
+        String s = String.valueOf(side);
+        return switch (s) {
+            case "0" -> "BUY";
+            case "1" -> "SELL";
+            default -> s;
+        };
+    }
+
     private MarketDto lookupMarket(String conditionId) {
         try {
             MarketDto market = marketService.get(conditionId).block(Duration.ofSeconds(3));
@@ -235,8 +245,9 @@ public class TradingService {
         java.util.Map<?, ?> order = built.wireOrder() != null
                 ? built.wireOrder()
                 : (java.util.Map<?, ?>) built.typedData().get("message");
-        audit.setConditionId(order.get("tokenId").toString());
-        audit.setSide(order.get("side").toString());
+        audit.setConditionId(built.conditionId());
+        audit.setTokenId(order.get("tokenId").toString());
+        audit.setSide(sideName(order.get("side")));
         audit.setMakerAmount(built.makerAmount());
         audit.setTakerAmount(built.takerAmount());
         audit.setStatus("SUBMITTING");

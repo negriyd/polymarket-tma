@@ -223,7 +223,7 @@ public class OrderBuilder {
         Map<String, Object> wireOrder = new LinkedHashMap<>(message);
         wireOrder.put("expiration", u256Decimal(expirationSec));
 
-        return new BuiltOrder(orderHash, makerAmount, takerAmount, typedData, wireOrder);
+        return new BuiltOrder(orderHash, makerAmount, takerAmount, typedData, wireOrder, req.conditionId());
     }
 
     /**
@@ -393,7 +393,9 @@ public class OrderBuilder {
             @JsonProperty("makerAmount") BigInteger makerAmount,
             @JsonProperty("takerAmount") BigInteger takerAmount,
             @JsonProperty("typedData") Map<String, Object> typedData,
-            @JsonProperty("wireOrder") Map<String, Object> wireOrder) implements Serializable {
+            @JsonProperty("wireOrder") Map<String, Object> wireOrder,
+            /** Market the order belongs to; the signed order itself only carries the outcome token id. */
+            @JsonProperty("conditionId") String conditionId) implements Serializable {
 
         @JsonCreator
         public BuiltOrder(
@@ -401,12 +403,19 @@ public class OrderBuilder {
                 @JsonProperty("makerAmount") BigInteger makerAmount,
                 @JsonProperty("takerAmount") BigInteger takerAmount,
                 @JsonProperty("typedData") Map<String, Object> typedData,
-                @JsonProperty("wireOrder") Map<String, Object> wireOrder) {
+                @JsonProperty("wireOrder") Map<String, Object> wireOrder,
+                @JsonProperty("conditionId") String conditionId) {
             this.orderHash = orderHash;
             this.makerAmount = makerAmount;
             this.takerAmount = takerAmount;
             this.typedData = typedData;
             this.wireOrder = wireOrder;
+            this.conditionId = conditionId;
+        }
+
+        public BuiltOrder(String orderHash, BigInteger makerAmount, BigInteger takerAmount,
+                          Map<String, Object> typedData, Map<String, Object> wireOrder) {
+            this(orderHash, makerAmount, takerAmount, typedData, wireOrder, null);
         }
     }
 }

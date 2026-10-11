@@ -30,8 +30,12 @@ public class OrderAudit {
     @Column(name = "order_hash", length = 128)
     private String orderHash;
 
-    @Column(name = "condition_id", nullable = false, length = 128)
+    /** Null only for rows written before V4, which stored the token id here. */
+    @Column(name = "condition_id", length = 128)
     private String conditionId;
+
+    @Column(name = "token_id", length = 128)
+    private String tokenId;
 
     @Column(name = "side", nullable = false, length = 8)
     private String side;
