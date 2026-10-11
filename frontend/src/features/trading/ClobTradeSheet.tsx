@@ -12,6 +12,7 @@ import { useWallet } from '@/features/wallet/useWallet';
 import { signAndRelayBatch } from '@/features/wallet/relayerTx';
 import { hapticImpact } from '@/lib/telegram/webApp';
 import { ShareButton } from '@/features/share/ShareButton';
+import { markFirstBetDone } from '@/features/onboarding/firstBet';
 
 type OutcomeSide = 'yes' | 'no';
 
@@ -193,6 +194,7 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
       return submitted;
     },
     onSuccess: (sub) => {
+      markFirstBetDone();
       const key = `trade.status.${sub.status}` as MessageKey;
       const text = STATUS_KEYS.has(sub.status) ? t(key) : t('trade.statusOther', { status: sub.status });
       setSuccess(`${text}${sub.orderId ? ` · ${sub.orderId.slice(0, 10)}…` : ''}`);

@@ -71,6 +71,9 @@ export interface OperatorStats {
   feePayments: number;
   feesUsdc: string;
   referralUsdc: string;
+  funnel: { opened: number; wallet: number; tried: number; bet: number };
+  /** Per channel tag (startapp=s<tag>); "direct" = no tag. launches = last 30 days. */
+  sources: { source: string; launches: number; users: number; wallet: number; bet: number }[];
 }
 
 export interface ReferralInfo {

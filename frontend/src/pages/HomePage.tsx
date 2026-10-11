@@ -6,6 +6,8 @@ import { ErrorView } from '@/components/ErrorView';
 import { useAuthStore } from '@/features/auth/store';
 import { LanguagePicker } from '@/components/LanguagePicker';
 import { useT } from '@/lib/i18n';
+import { FirstBetChecklist } from '@/features/onboarding/FirstBetChecklist';
+import { isWalletConfigured } from '@/features/wallet/useWallet';
 
 export function HomePage() {
   const user = useAuthStore((s) => s.user);
@@ -26,6 +28,8 @@ export function HomePage() {
         </div>
         <LanguagePicker />
       </header>
+
+      {isWalletConfigured() && <FirstBetChecklist />}
 
       {featured.isLoading && <Spinner label={t('markets.loading')} />}
       {featured.error && (

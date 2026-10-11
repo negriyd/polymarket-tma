@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.polymarket.tma.config.AppProperties;
+import com.polymarket.tma.trading.bridge.BridgeProperties;
 import com.polymarket.tma.trading.dto.OrderDtos;
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -91,10 +92,27 @@ public class OrderBuilder {
 
     private final AppProperties props;
     private final ObjectMapper objectMapper;
+    private final String builderCode;
 
-    public OrderBuilder(AppProperties props, ObjectMapper objectMapper) {
+    public OrderBuilder(AppProperties props, ObjectMapper objectMapper, BridgeProperties builder) {
         this.props = props;
         this.objectMapper = objectMapper;
+        this.builderCode = builderCodeOrZero(builder == null ? null : builder.builderCode());
+    }
+
+    /**
+     * Our Polymarket Builder Program code (polymarket.com → Settings → Builders), signed into every
+     * order so Polymarket attributes the volume to this app. Anything but a bytes32 hex → zero.
+     */
+    static String builderCodeOrZero(String code) {
+        if (code != null && code.matches("0x[0-9a-fA-F]{64}")) {
+            return code.toLowerCase(java.util.Locale.ROOT);
+        }
+        if (code != null && !code.isBlank()) {
+            org.slf4j.LoggerFactory.getLogger(OrderBuilder.class)
+                    .warn("POLY_BUILDER_CODE is not a bytes32 hex value; orders go out without attribution");
+        }
+        return BYTES32_ZERO;
     }
 
     /** Backwards-compatible single-address overload — both maker and signer set to the wallet (EOA). */
@@ -186,7 +204,7 @@ public class OrderBuilder {
         message.put("signatureType", u8Decimal(signatureType));
         message.put("timestamp", u256Decimal(timestampMs));
         message.put("metadata", BYTES32_ZERO);
-        message.put("builder", BYTES32_ZERO);
+        message.put("builder", builderCode);
 
         Map<String, Object> types = new LinkedHashMap<>();
         types.put("EIP712Domain", List.of(

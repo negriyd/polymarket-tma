@@ -56,6 +56,60 @@ export function OperatorStatsPage() {
             />
           </div>
           <p className="text-[11px] leading-snug text-tg-hint">{t('op.note')}</p>
+
+          <section className="space-y-2 rounded-xl bg-tg-secondary p-3">
+            <h2 className="text-sm font-semibold text-tg-text">{t('op.funnel')}</h2>
+            {(
+              [
+                ['op.f.opened', stats.data.funnel.opened],
+                ['op.f.wallet', stats.data.funnel.wallet],
+                ['op.f.tried', stats.data.funnel.tried],
+                ['op.f.bet', stats.data.funnel.bet],
+              ] as const
+            ).map(([key, n]) => {
+              const top = Math.max(1, stats.data.funnel.opened);
+              return (
+                <div key={key}>
+                  <div className="flex justify-between text-xs text-tg-text">
+                    <span>{t(key)}</span>
+                    <span className="tabular-nums">
+                      {n} <span className="text-tg-hint">· {Math.round((n / top) * 100)}%</span>
+                    </span>
+                  </div>
+                  <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-tg-bg">
+                    <div className="h-full bg-tg-button" style={{ width: `${(n / top) * 100}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+
+          <section className="space-y-1 rounded-xl bg-tg-secondary p-3">
+            <h2 className="text-sm font-semibold text-tg-text">{t('op.sources')}</h2>
+            <p className="text-[11px] text-tg-hint">{t('op.sourcesHint')}</p>
+            <table className="w-full text-xs tabular-nums">
+              <thead className="text-tg-hint">
+                <tr>
+                  <th className="py-1 text-left font-medium">{t('op.s.source')}</th>
+                  <th className="text-right font-medium">{t('op.s.launches')}</th>
+                  <th className="text-right font-medium">{t('op.s.users')}</th>
+                  <th className="text-right font-medium">{t('op.s.wallet')}</th>
+                  <th className="text-right font-medium">{t('op.s.bet')}</th>
+                </tr>
+              </thead>
+              <tbody className="text-tg-text">
+                {stats.data.sources.map((r) => (
+                  <tr key={r.source} className="border-t border-tg-hint/10">
+                    <td className="py-1 font-mono">{r.source === 'direct' ? t('op.s.direct') : r.source}</td>
+                    <td className="text-right">{r.launches}</td>
+                    <td className="text-right">{r.users}</td>
+                    <td className="text-right">{r.wallet}</td>
+                    <td className="text-right">{r.bet}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         </>
       )}
     </div>

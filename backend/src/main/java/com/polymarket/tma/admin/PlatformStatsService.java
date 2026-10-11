@@ -4,6 +4,7 @@ import com.polymarket.tma.auth.repo.AppUserRepository;
 import com.polymarket.tma.config.AppProperties;
 import com.polymarket.tma.trading.relayer.RelayerClient;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,41 @@ public class PlatformStatsService {
      */
     public record Stats(long users, long usersLast7d, long usersWithWallet, long referredUsers,
                         long bets, String volumeUsdc, String avgBetUsdc,
-                        long feePayments, String feesUsdc, String referralUsdc) {}
+                        long feePayments, String feesUsdc, String referralUsdc,
+                        Funnel funnel, List<SourceRow> sources) {}
+
+    /** Users at each onboarding step (cumulative: each step is a subset of the previous one). */
+    public record Funnel(long opened, long wallet, long tried, long bet) {}
+
+    /**
+     * One channel tag ({@code startapp=s<tag>}), or "direct" for users without one.
+     *
+     * @param launches app opens through links with this tag in the last 30 days
+     */
+    public record SourceRow(String source, long launches, long users, long wallet, long bet) {}
+
+    private static final String FUNNEL_SQL = "SELECT COUNT(*) AS opened, "
+            + "COUNT(*) FILTER (WHERE u.wallet_address IS NOT NULL) AS wallet, "
+            + "COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM order_audit o WHERE o.user_id = u.id)) AS tried, "
+            + "COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM order_audit o WHERE o.user_id = u.id AND o."
+            + ACCEPTED + ")) AS bet FROM app_user u";
+
+    /** Sign-ups and their progress per channel tag, joined with recent launches through that tag. */
+    private static final String SOURCES_SQL = """
+            SELECT COALESCE(s.source, l.source, 'direct') AS source,
+                   COALESCE(l.launches, 0) AS launches,
+                   COALESCE(s.users, 0) AS users, COALESCE(s.wallet, 0) AS wallet, COALESCE(s.bet, 0) AS bet
+            FROM (SELECT u.signup_source AS source, COUNT(*) AS users,
+                         COUNT(*) FILTER (WHERE u.wallet_address IS NOT NULL) AS wallet,
+                         COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM order_audit o
+                             WHERE o.user_id = u.id AND o.%s)) AS bet
+                  FROM app_user u GROUP BY u.signup_source) s
+            FULL OUTER JOIN (SELECT source, COUNT(*) AS launches FROM app_launch
+                             WHERE created_at > NOW() - INTERVAL '30 days' AND source IS NOT NULL
+                             GROUP BY source) l ON l.source = s.source
+            ORDER BY users DESC, launches DESC
+            LIMIT 30
+            """.formatted(ACCEPTED);
 
     public boolean isOperator(long userId) {
         AppProperties.Fees fees = props.fees();
@@ -66,6 +101,10 @@ public class PlatformStatsService {
         Map<String, Object> f = jdbc.queryForMap("SELECT COUNT(*) AS n, COALESCE(SUM(platform_amount), 0) AS platform, "
                 + "COALESCE(SUM(referrer_amount), 0) AS referrer FROM fee_payment");
 
+        Map<String, Object> fn = jdbc.queryForMap(FUNNEL_SQL);
+        List<SourceRow> sources = jdbc.query(SOURCES_SQL, (rs, i) -> new SourceRow(rs.getString("source"),
+                rs.getLong("launches"), rs.getLong("users"), rs.getLong("wallet"), rs.getLong("bet")));
+
         BigDecimal volume = micro(o.get("volume"));
         long buys = ((Number) o.get("buys")).longValue();
         BigDecimal avg = buys == 0 ? BigDecimal.ZERO
@@ -73,7 +112,9 @@ public class PlatformStatsService {
         return new Stats(
                 num(u.get("total")), num(u.get("last7")), num(u.get("wallet")), num(u.get("referred")),
                 num(o.get("bets")), usd(volume), usd(avg),
-                num(f.get("n")), usd(micro(f.get("platform"))), usd(micro(f.get("referrer"))));
+                num(f.get("n")), usd(micro(f.get("platform"))), usd(micro(f.get("referrer"))),
+                new Funnel(num(fn.get("opened")), num(fn.get("wallet")), num(fn.get("tried")), num(fn.get("bet"))),
+                sources);
     }
 
     private static long num(Object v) {

@@ -41,14 +41,15 @@ class OrderBuilderTest {
 
     @BeforeEach
     void setUp() {
-        when(props.polygon()).thenReturn(
+        org.mockito.Mockito.lenient().when(props.polygon()).thenReturn(
                 new AppProperties.Polygon(
                         "https://polygon-rpc.com",
                         "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
                         EXCHANGE,
                         NEG_RISK_EXCHANGE,
                         "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"));
-        orderBuilder = new OrderBuilder(props, objectMapper);
+        // No builder code: the golden order below was accepted by CLOB with builder = 0x00…00.
+        orderBuilder = new OrderBuilder(props, objectMapper, null);
     }
 
     @Test
@@ -407,5 +408,27 @@ class OrderBuilderTest {
 
         assertThat(orderBuilder.finalizeSignature(built, "0xabcdef")).isEqualTo("0xabcdef");
         assertThat(built.typedData().get("primaryType")).isEqualTo("Order");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void signsTheBuilderCodeIntoTheOrderForAttribution() {
+        String code = "0xFD9550A42E3CED40DAC8AC02744C8376D44A0F5BF0CA6A6F35C6045284C07122";
+        var attributed = new OrderBuilder(props, objectMapper,
+                new com.polymarket.tma.trading.bridge.BridgeProperties("https://bridge.polymarket.com", code));
+        var req = new OrderDtos.PrepareOrderRequest("0xcid", "1", OrderDtos.Side.BUY, new java.math.BigDecimal("0.5"),
+                new java.math.BigDecimal("10"), null, OrderDtos.SignatureType.EOA, null, null);
+
+        var built = attributed.build(ACCEPTED_EOA, req);
+        var message = (java.util.Map<String, Object>) built.typedData().get("message");
+        assertThat(message.get("builder")).isEqualTo(code.toLowerCase());
+        assertThat(built.wireOrder().get("builder")).isEqualTo(code.toLowerCase());
+        assertThat(built.orderHash()).isNotEqualTo(orderBuilder.build(ACCEPTED_EOA, req).orderHash());
+    }
+
+    @Test
+    void malformedBuilderCodeFallsBackToZero() {
+        assertThat(OrderBuilder.builderCodeOrZero(null)).isEqualTo("0x" + "0".repeat(64));
+        assertThat(OrderBuilder.builderCodeOrZero("tma")).isEqualTo("0x" + "0".repeat(64));
     }
 }
