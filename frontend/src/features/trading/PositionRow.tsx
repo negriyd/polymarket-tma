@@ -20,8 +20,8 @@ function fmtUsd(n: number): string {
   return `$${fmt}`;
 }
 
-function fmtPercent(frac: number): string {
-  const pct = frac * 100;
+/** Polymarket's data API returns `percentPnl` already in percent (-0.93 means -0.93%). */
+function fmtPercent(pct: number): string {
   const sign = pct >= 0 ? '+' : '';
   return `${sign}${pct.toFixed(1)}%`;
 }
