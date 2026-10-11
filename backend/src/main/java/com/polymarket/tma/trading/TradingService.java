@@ -85,6 +85,10 @@ public class TradingService {
                 domain == null ? "?" : domain.get("verifyingContract"));
         pending.put(userId, built);
         FeeQuote fee = fees.quote(req);
+        if (fee != null && maker.equalsIgnoreCase(fee.recipient())) {
+            // The fee recipient trading from its own wallet would only pay itself: skip the extra signature.
+            fee = null;
+        }
         DepositWalletDtos.PreparedBatch feeBatch = null;
         if (fee != null && req.signatureType() == OrderDtos.SignatureType.POLY_1271) {
             // Funds live in the deposit wallet (pUSD), and the EOA has no gas: charge from there.

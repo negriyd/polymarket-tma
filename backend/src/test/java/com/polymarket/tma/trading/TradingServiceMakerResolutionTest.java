@@ -133,6 +133,20 @@ class TradingServiceMakerResolutionTest {
     }
 
     @Test
+    void noFeeWhenTheMakerIsTheFeeRecipient() {
+        String depositWallet = "0x5757DA608Cb6Feaa78dB6388506894F59621eB77";
+        when(depositWallets.depositWalletOf(WALLET)).thenReturn(depositWallet);
+        when(fees.quote(any())).thenReturn(new com.polymarket.tma.fees.FeeService.FeeQuote(
+                java.math.BigInteger.valueOf(20_000), 100, depositWallet.toLowerCase(), null));
+
+        var resp = service.prepare(1L, req(OrderDtos.SignatureType.POLY_1271, null));
+
+        assertThat(resp.feeBatch()).isNull();
+        assertThat(resp.feeAmountUsdc()).isNull();
+        verify(depositWallets, never()).prepareCollateralTransfer(any(Long.class), any(), any(), any());
+    }
+
+    @Test
     void poly1271RejectsMakerOtherThanDepositWallet() {
         when(depositWallets.depositWalletOf(WALLET)).thenReturn("0x0000000000000000000000000000000000000dec");
         OrderDtos.PrepareOrderRequest req = req(OrderDtos.SignatureType.POLY_1271, PROXY);
