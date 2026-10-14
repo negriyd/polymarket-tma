@@ -1,6 +1,8 @@
 package com.polymarket.tma.auth;
 
+import com.polymarket.tma.groups.GroupService;
 import com.polymarket.tma.referral.ReferralService;
+import com.polymarket.tma.referral.StartParam;
 
 import com.polymarket.tma.auth.dto.AuthDtos;
 import com.polymarket.tma.auth.entity.AppUser;
@@ -30,13 +32,16 @@ public class AuthService {
     private final JwtService jwt;
     private final AppProperties props;
     private final ReferralService referrals;
+    private final GroupService groups;
 
     public AuthService(AppUserRepository userRepo,
                        RefreshTokenRepository refreshRepo,
                        TelegramInitDataValidator validator,
                        JwtService jwt,
                        AppProperties props,
-                       ReferralService referrals) {
+                       ReferralService referrals,
+                       GroupService groups) {
+        this.groups = groups;
         this.userRepo = userRepo;
         this.refreshRepo = refreshRepo;
         this.validator = validator;
@@ -56,6 +61,20 @@ public class AuthService {
             // Attribution is best effort; it must never block signing in.
             org.slf4j.LoggerFactory.getLogger(AuthService.class)
                     .warn("Launch attribution failed for user {}: {}", user.getId(), e.toString());
+        }
+        Long group = StartParam.parse(parsed.startParam()).groupChat();
+        if (group != null) {
+            // Opened from a group's leaderboard link: join it once the user row is committed.
+            long userId = user.getId();
+            String firstName = user.getFirstName();
+            String username = user.getUsername();
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            groups.joinFromApp(group, userId, firstName, username);
+                        }
+                    });
         }
         return issueTokens(user);
     }

@@ -43,15 +43,18 @@ public class FeeService {
      *     or {@code null} when no fee should be charged.
      */
     public FeeQuote quote(OrderDtos.PrepareOrderRequest req) {
-        AppProperties.Fees cfg = props.fees();
-        if (cfg == null || !cfg.enabled()) {
-            return null;
-        }
         if (req.price() == null || req.size() == null) {
             return null;
         }
+        return quoteNotional(req.price().multiply(req.size()));
+    }
 
-        BigDecimal notionalUsdc = req.price().multiply(req.size());
+    /** Fee on a USDC notional (e.g. what a FAK buy actually spent); same null rules as {@link #quote}. */
+    public FeeQuote quoteNotional(BigDecimal notionalUsdc) {
+        AppProperties.Fees cfg = props.fees();
+        if (cfg == null || !cfg.enabled() || notionalUsdc == null) {
+            return null;
+        }
         BigDecimal feeUsdc = notionalUsdc
                 .multiply(BigDecimal.valueOf(cfg.spreadBps()))
                 .divide(BPS_DIVISOR, 6, RoundingMode.HALF_UP);

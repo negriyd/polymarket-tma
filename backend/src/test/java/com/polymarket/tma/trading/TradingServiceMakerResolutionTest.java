@@ -60,7 +60,7 @@ class TradingServiceMakerResolutionTest {
     void setUp() {
         AppUser u = new AppUser();
         u.setWalletAddress(WALLET);
-        when(userRepo.findById(1L)).thenReturn(Optional.of(u));
+        lenient().when(userRepo.findById(1L)).thenReturn(Optional.of(u));
 
         BuiltOrder built = new BuiltOrder(
                 "0x" + "0".repeat(64),
@@ -308,5 +308,28 @@ class TradingServiceMakerResolutionTest {
                 java.util.List.of("1", "2"),
                 java.util.List.of("0.5", "0.5"),
                 negRisk);
+    }
+
+    @Test
+    void fakBuyChargesTheFeeOnWhatActuallyFilled() {
+        Map<String, Object> wire = new LinkedHashMap<>();
+        wire.put("tokenId", "1");
+        wire.put("side", 0);
+        wire.put("maker", PROXY);
+        BuiltOrder built = new BuiltOrder("0xhash", java.math.BigInteger.valueOf(5_000_000),
+                java.math.BigInteger.valueOf(8_928_500), stubTypedData(), wire, "0xcid", "FAK");
+        var feeQuote = new FeeService.FeeQuote(java.math.BigInteger.valueOf(60_000), 200, "0xfee", null);
+        when(fees.quoteNotional(new BigDecimal("3"))).thenReturn(feeQuote);
+        when(referrals.split(1L, feeQuote.amountMicroUsdc())).thenReturn(Optional.empty());
+        var batch = new com.polymarket.tma.trading.relayer.DepositWalletDtos.PreparedBatch("0xbatch", Map.of(), 1);
+        when(depositWallets.prepareCollateralTransfers(eq(1L), eq("TRADING_FEE"), any())).thenReturn(batch);
+
+        var partial = new OrderDtos.SubmittedOrderResponse("0xid", "matched", null, "3", null, null);
+        var charged = service.withFillFee(1L, built, partial);
+        assertThat(charged.feeBatch()).isEqualTo(batch);
+        assertThat(charged.feeAmountUsdc()).isEqualTo("0.06");
+
+        var resting = new OrderDtos.SubmittedOrderResponse("0xid", "unmatched", null, null, null, null);
+        assertThat(service.withFillFee(1L, built, resting).feeBatch()).as("nothing filled, no fee").isNull();
     }
 }

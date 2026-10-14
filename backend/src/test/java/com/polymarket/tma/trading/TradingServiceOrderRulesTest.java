@@ -58,4 +58,24 @@ class TradingServiceOrderRulesTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("Minimum order is 5 shares (≈ $2.65");
     }
+
+    private static OrderDtos.PrepareOrderRequest fak(String cap, String amount) {
+        return new OrderDtos.PrepareOrderRequest("0xcid", "1", OrderDtos.Side.BUY, new BigDecimal(cap),
+                BigDecimal.ONE, OrderDtos.OrderType.FAK, OrderDtos.SignatureType.POLY_1271, null, null,
+                new BigDecimal(amount));
+    }
+
+    @Test
+    void fakBuySpendsWholeCentsAndSkipsTheShareMinimum() {
+        var fitted = TradingService.fitToOrderRules(fak("0.56", "1.009"), market("0.01", "5"));
+        assertThat(fitted.amount()).isEqualByComparingTo("1.00");
+        assertThat(fitted.size()).isEqualByComparingTo("1.7857");
+    }
+
+    @Test
+    void fakBuyBelowOneDollarIsRejected() {
+        assertThatThrownBy(() -> TradingService.fitToOrderRules(fak("0.56", "0.99"), market("0.01", "5")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Minimum bet is $1");
+    }
 }

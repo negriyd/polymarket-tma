@@ -254,4 +254,16 @@ class ClobOrderClientPayloadTest {
     private static String base64(String s) {
         return Base64.getUrlEncoder().encodeToString(s.getBytes());
     }
+
+    @Test
+    void fakThatMatchedNothingIsAnError() {
+        BuiltOrder fak = new BuiltOrder("0xhash", BigInteger.ONE, BigInteger.ONE, Map.of(), Map.of(), "0xcid", "FAK");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ClobOrderClient.toResponse(fak,
+                        Map.of("success", false, "errorMsg", "no orders found to match with FAK order")))
+                .isInstanceOf(com.polymarket.tma.common.ApiException.class)
+                .hasMessageContaining("no orders found");
+        var ok = ClobOrderClient.toResponse(fak, Map.of("success", true, "orderID", "0xid", "status", "matched",
+                "makingAmount", "4.98"));
+        org.assertj.core.api.Assertions.assertThat(ok.filledUsdc()).isEqualTo("4.98");
+    }
 }

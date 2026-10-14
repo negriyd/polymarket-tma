@@ -125,10 +125,29 @@ public class ClobOrderClient {
                             return mapClobError(resp.statusCode().value(), bodyText, "ORDER");
                         }))
                 .bodyToMono(Map.class)
-                .map(resp -> new OrderDtos.SubmittedOrderResponse(
-                        String.valueOf(resp.getOrDefault("orderID", built.orderHash())),
-                        String.valueOf(resp.getOrDefault("status", "ACCEPTED")),
-                        String.valueOf(resp.getOrDefault("transactionHash", null))));
+                .map(resp -> toResponse(built, resp));
+    }
+
+    /**
+     * CLOB answers 200 with {@code success:false} when an order is valid but can't stand — e.g. a
+     * FAK with nothing to match up to its price. {@code makingAmount} is what the maker gave (pUSD
+     * for a buy) as a decimal string.
+     */
+    static OrderDtos.SubmittedOrderResponse toResponse(BuiltOrder built, Map<?, ?> resp) {
+        Object ok = resp.get("success");
+        String errorMsg = resp.get("errorMsg") == null ? "" : String.valueOf(resp.get("errorMsg"));
+        if (Boolean.FALSE.equals(ok) || (built.fak() && !errorMsg.isBlank() && resp.get("orderID") == null)) {
+            log.info("CLOB did not place order {}: {}", built.orderHash(), errorMsg);
+            throw ApiException.badRequest("ORDER_NOT_FILLED",
+                    errorMsg.isBlank() ? "The order could not be placed" : errorMsg);
+        }
+        Object making = resp.get("makingAmount");
+        String filled = making == null || String.valueOf(making).isBlank() ? null : String.valueOf(making);
+        return new OrderDtos.SubmittedOrderResponse(
+                String.valueOf(resp.containsKey("orderID") ? resp.get("orderID") : built.orderHash()),
+                String.valueOf(resp.containsKey("status") ? resp.get("status") : "ACCEPTED"),
+                String.valueOf(resp.get("transactionHash")),
+                filled, null, null);
     }
 
     /**
@@ -178,7 +197,7 @@ public class ClobOrderClient {
         // py-clob-client-v2: `owner = self.creds.api_key`. Falling back to maker preserves the
         // legacy behaviour when called without creds (tests, unauthenticated scaffold).
         payload.put("owner", creds != null && creds.apiKey() != null ? creds.apiKey() : order.get("maker"));
-        payload.put("orderType", "GTC");
+        payload.put("orderType", built.orderType() == null ? "GTC" : built.orderType());
         payload.put("deferExec", false);
         payload.put("postOnly", false);
 

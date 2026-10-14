@@ -5,16 +5,22 @@ import java.util.regex.Pattern;
 /**
  * Telegram {@code ?startapp=} value of our links: {@code _}-separated tokens in any order —
  * {@code m_<marketId>} market, {@code y}/{@code n} sharer's pick, {@code r<code>} referrer,
- * {@code s<tag>} channel. E.g. {@code m_559652_y_rk3f9a2qx}, {@code stg1}, {@code r8h2kq0za_stg1}.
+ * {@code s<tag>} channel, {@code g<digits>} the group chat whose leaderboard to join (chat id
+ * without its minus sign). E.g. {@code m_559652_y_rk3f9a2qx}, {@code stg1}, {@code g1001234567890_sgroup}.
  * Telegram allows {@code [A-Za-z0-9_-]{1,64}}.
  */
-public record StartParam(String marketId, String side, String refCode, String source) {
+public record StartParam(String marketId, String side, String refCode, String source, Long groupChat) {
 
     private static final Pattern REF = Pattern.compile("r([a-z0-9]{4,16})");
     private static final Pattern SOURCE = Pattern.compile("s([a-z0-9-]{1,30})");
     private static final Pattern DIGITS = Pattern.compile("\\d{1,20}");
+    private static final Pattern GROUP = Pattern.compile("g(\\d{1,18})");
 
-    public static final StartParam NONE = new StartParam(null, null, null, null);
+    public static final StartParam NONE = new StartParam(null, null, null, null, null);
+
+    public StartParam(String marketId, String side, String refCode, String source) {
+        this(marketId, side, refCode, source, null);
+    }
 
     public static StartParam parse(String raw) {
         if (raw == null || raw.isBlank() || raw.length() > 64) {
@@ -24,6 +30,7 @@ public record StartParam(String marketId, String side, String refCode, String so
         String side = null;
         String ref = null;
         String source = null;
+        Long group = null;
         String[] tokens = raw.split("_");
         for (int i = 0; i < tokens.length; i++) {
             String tok = tokens[i];
@@ -37,8 +44,10 @@ public record StartParam(String marketId, String side, String refCode, String so
                 ref = tok.substring(1);
             } else if (SOURCE.matcher(tok).matches()) {
                 source = tok.substring(1);
+            } else if (GROUP.matcher(tok).matches()) {
+                group = -Long.parseLong(tok.substring(1));
             }
         }
-        return new StartParam(market, side, ref, source);
+        return new StartParam(market, side, ref, source, group);
     }
 }

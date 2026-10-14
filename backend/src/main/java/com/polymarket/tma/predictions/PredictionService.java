@@ -35,8 +35,13 @@ public class PredictionService {
 
     public record Counts(long correct, long wrong, long pending) {}
 
-    /** Track record for the profile label; bets count only resolved real positions. */
-    public record TrackRecord(Counts predictions, Counts bets, boolean allowsMessages) {}
+    /**
+     * Track record for the profile label; bets count only resolved real positions.
+     *
+     * @param paperProfit what a $5 bet on every resolved prediction, at the price when it was made,
+     *                    would have returned net — the "bet for real" nudge
+     */
+    public record TrackRecord(Counts predictions, Counts bets, boolean allowsMessages, BigDecimal paperProfit) {}
 
     public Prediction predict(long userId, String marketKey, String side) {
         MarketDto m = markets.get(marketKey).block(Duration.ofSeconds(5));
@@ -110,7 +115,13 @@ public class PredictionService {
                 FROM bet_result WHERE user_id = ?
                 """, (rs, i) -> new Counts(rs.getLong("ok"), rs.getLong("bad"), 0), userId);
         Boolean allows = jdbc.queryForObject("SELECT allows_messages FROM app_user WHERE id = ?", Boolean.class, userId);
-        return new TrackRecord(predictions, bets, Boolean.TRUE.equals(allows));
+        BigDecimal paper = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(CASE WHEN correct AND price > 0 THEN 5 / price - 5
+                                         WHEN correct = FALSE THEN -5 ELSE 0 END), 0)
+                FROM prediction WHERE user_id = ? AND resolved_at IS NOT NULL
+                """, BigDecimal.class, userId);
+        return new TrackRecord(predictions, bets, Boolean.TRUE.equals(allows),
+                paper == null ? BigDecimal.ZERO : paper.setScale(2, java.math.RoundingMode.HALF_UP));
     }
 
     public void setAllowsMessages(long userId, boolean enabled) {

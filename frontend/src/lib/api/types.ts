@@ -77,6 +77,8 @@ export interface TrackRecord {
   predictions: { correct: number; wrong: number; pending: number };
   bets: { correct: number; wrong: number; pending: number };
   allowsMessages: boolean;
+  /** Net result of $5 on every resolved prediction at its price then. */
+  paperProfit: number;
 }
 
 export interface OperatorStats {
@@ -285,6 +287,11 @@ export interface SubmittedOrder {
   orderId: string;
   status: string;
   txHash?: string;
+  /** pUSD a FAK buy actually spent, when CLOB reports it. */
+  filledUsdc?: string | null;
+  /** FAK buys: the fee on the filled amount, prepared after the fill. */
+  feeBatch?: PreparedBatch | null;
+  feeAmountUsdc?: string | null;
 }
 
 export interface ApiError {

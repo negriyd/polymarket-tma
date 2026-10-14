@@ -1,30 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatUnits } from 'viem';
 import { api } from '@/lib/api/endpoints';
-import type { BridgeDeposit, FundingOption } from '@/lib/api/types';
+import type { FundingOption } from '@/lib/api/types';
+import { IN_FLIGHT, depositsRefetch, formatAmount } from './deposits';
 import { useLocale, useT, type TFunction } from '@/lib/i18n';
 import { hapticImpact, tg } from '@/lib/telegram/webApp';
-
-const IN_FLIGHT = new Set(['DEPOSIT_DETECTED', 'PROCESSING', 'ORIGIN_TX_CONFIRMED', 'SUBMITTED']);
 
 function statusLabel(status: string, t: TFunction): { text: string; cls: string } {
   if (status === 'COMPLETED') return { text: t('fund.credited'), cls: 'text-emerald-500' };
   if (status === 'FAILED') return { text: t('fund.failed'), cls: 'text-rose-500' };
   if (IN_FLIGHT.has(status)) return { text: t('fund.inProgress'), cls: 'text-amber-500' };
   return { text: status, cls: 'text-tg-hint' };
-}
-
-function formatAmount(d: BridgeDeposit, options: FundingOption[]): string {
-  const opt = options.find(
-    (o) => o.chainId === d.fromChainId && o.tokenAddress.toLowerCase() === d.fromTokenAddress.toLowerCase(),
-  );
-  if (!opt || opt.decimals == null) return '';
-  try {
-    return `${Number(formatUnits(BigInt(d.fromAmountBaseUnit), opt.decimals)).toFixed(2)} ${opt.symbol}`;
-  } catch {
-    return '';
-  }
 }
 
 /**
@@ -47,7 +33,7 @@ export function FundingPanel() {
   const deposits = useQuery({
     queryKey: ['bridge-deposits'],
     queryFn: api.listBridgeDeposits,
-    refetchInterval: (q) => ((q.state.data ?? []).some((d) => IN_FLIGHT.has(d.status)) ? 10_000 : 30_000),
+    refetchInterval: depositsRefetch,
   });
 
   // A finished deposit changes the pUSD balance shown by DepositWalletSection.

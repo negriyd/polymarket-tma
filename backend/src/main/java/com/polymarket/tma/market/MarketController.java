@@ -46,6 +46,39 @@ public class MarketController {
                         .map(items -> new MarketListResponse(items, resp.page(), resp.size(), resp.hasMore())));
     }
 
+    /**
+     * Home's "about your region": the busiest open markets tagged with the places the request's
+     * language is spoken; empty for languages without such tags.
+     */
+    @GetMapping("/local")
+    public Mono<List<MarketDto>> local(
+            @RequestParam(defaultValue = "6") int size,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String language) {
+        String locale = MarketLocale.fromHeader(language);
+        List<String> tags = LocalTopics.tagsFor(locale);
+        if (tags.isEmpty()) {
+            return Mono.just(List.of());
+        }
+        int n = Math.max(1, Math.min(size, 12));
+        return reactor.core.publisher.Flux.fromIterable(tags)
+                .concatMap(tag -> service.list(0, n, "volume24hr", false, tag, null)
+                        .map(MarketListResponse::items)
+                        .onErrorReturn(List.of()))
+                .collectList()
+                .map(lists -> mergeByVolume(lists, n))
+                .flatMap(items -> translations.translateMarkets(items, locale));
+    }
+
+    static List<MarketDto> mergeByVolume(List<List<MarketDto>> lists, int n) {
+        java.util.Map<String, MarketDto> unique = new java.util.LinkedHashMap<>();
+        lists.forEach(l -> l.forEach(m -> unique.putIfAbsent(m.conditionId(), m)));
+        return unique.values().stream()
+                .sorted(java.util.Comparator.comparing(
+                        (MarketDto m) -> m.volume24h() == null ? java.math.BigDecimal.ZERO : m.volume24h()).reversed())
+                .limit(n)
+                .toList();
+    }
+
     @GetMapping("/{conditionId}")
     public Mono<MarketDto> get(@PathVariable String conditionId,
                                @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String language) {

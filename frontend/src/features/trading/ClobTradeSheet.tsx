@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useSignTypedData, useWallets, type SignTypedDataParams } from '@privy-io/react-auth';
@@ -14,6 +14,7 @@ import { hapticImpact } from '@/lib/telegram/webApp';
 import { ShareButton } from '@/features/share/ShareButton';
 import { markFirstBetDone } from '@/features/onboarding/firstBet';
 import { NotifyPrompt } from '@/features/predictions/NotifyPrompt';
+import { INSTANT_AMOUNTS, INSTANT_MIN, bestAsk, capPrice, walkAsks } from './instantBuy';
 
 type OutcomeSide = 'yes' | 'no';
 
@@ -88,6 +89,8 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
   const toTick = useCallback((p: number) => p.toFixed(tickDecimals), [tickDecimals]);
   const minShares = market.orderMinSize ?? null;
   const [usdcStr, setUsdcStr] = useState('5');
+  const [mode, setMode] = useState<'instant' | 'limit'>('instant');
+  const instant = mode === 'instant';
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -104,6 +107,15 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
     staleTime: 15_000,
   });
   const ready = depositWallet.data?.readyToTrade === true;
+
+  const book = useQuery({
+    queryKey: ['orderbook', tokenId],
+    queryFn: () => api.getOrderbook(cid!, tokenId!),
+    enabled: open && instant && !!cid && !!tokenId,
+    refetchInterval: 10_000,
+  });
+  const ask = useMemo(() => bestAsk(book.data?.asks), [book.data]);
+  const cap = ask == null ? null : capPrice(ask, tick);
   const balance =
     depositWallet.data?.collateralBalance != null
       ? Number(formatUnits(BigInt(depositWallet.data.collateralBalance), 6))
@@ -127,9 +139,11 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
   const shares = priceOk && usdcOk ? Math.floor((usdcNum / priceNum) * 100 + 1e-9) / 100 : null;
   const tooSmall = shares != null && minShares != null && shares < minShares;
   const minSpend = minShares != null && priceOk ? Math.ceil(minShares * priceNum * 100) / 100 : null;
+  const fill = cap != null && usdcOk ? walkAsks(book.data?.asks, usdcNum, cap) : null;
+  const instantOk = cap != null && usdcOk && usdcNum >= INSTANT_MIN;
   const canSubmit =
-    w.ready && w.authenticated && !!w.address && ready && !!tokenId && !!cid && shares != null && shares > 0 &&
-    !tooSmall;
+    w.ready && w.authenticated && !!w.address && ready && !!tokenId && !!cid &&
+    (instant ? instantOk : shares != null && shares > 0 && !tooSmall);
 
   const trade = useMutation({
     mutationFn: async () => {
@@ -137,7 +151,7 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
       setSuccess(null);
       if (!cid || !tokenId) throw new Error(t('trade.missingToken'));
       if (!w.address) throw new Error(t('common.walletNotConnected'));
-      if (shares == null || shares <= 0) throw new Error(t('trade.invalid'));
+      if (instant ? !instantOk : shares == null || shares <= 0) throw new Error(t('trade.invalid'));
 
       const address = w.address;
       const sign = async (td: unknown) =>
@@ -147,8 +161,9 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
         conditionId: cid,
         tokenId,
         side: 'BUY',
-        price: priceNum,
-        size: shares,
+        price: instant ? cap! : priceNum,
+        size: instant ? Math.floor((usdcNum / cap!) * 100) / 100 : shares!,
+        instant: instant ? { amount: Math.floor(usdcNum * 100) / 100 } : undefined,
         sign,
         ensurePolygon: async () => {
           if (activeWallet && 'switchChain' in activeWallet && walletChainId !== 137) {
@@ -165,7 +180,13 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
     onSuccess: (sub) => {
       markFirstBetDone();
       const key = `trade.status.${sub.status}` as MessageKey;
-      const text = STATUS_KEYS.has(sub.status) ? t(key) : t('trade.statusOther', { status: sub.status });
+      const spent = sub.filledUsdc != null ? Number(sub.filledUsdc) : NaN;
+      const text =
+        instant && sub.status === 'matched' && Number.isFinite(spent) && spent > 0
+          ? t('trade.bought', { amount: spent.toFixed(2) })
+          : STATUS_KEYS.has(sub.status)
+            ? t(key)
+            : t('trade.statusOther', { status: sub.status });
       setSuccess(`${text}${sub.orderId ? ` · ${sub.orderId.slice(0, 10)}…` : ''}`);
       hapticImpact('medium');
       qc.invalidateQueries({ queryKey: ['positions'] });
@@ -234,7 +255,73 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
           <p className="mb-3 text-sm text-rose-500">{t('trade.noToken')}</p>
         )}
 
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-tg-secondary p-1 text-sm">
+          {(['instant', 'limit'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => {
+                setMode(m);
+                setError(null);
+                setSuccess(null);
+              }}
+              className={`rounded-lg py-1.5 font-medium ${mode === m ? 'bg-tg-bg text-tg-text shadow-sm' : 'text-tg-hint'}`}
+            >
+              {t(m === 'instant' ? 'trade.mode.instant' : 'trade.mode.limit')}
+            </button>
+          ))}
+        </div>
+
         <div className="space-y-3">
+          {instant ? (
+            <div>
+              <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">{t('trade.amount')}</span>
+              <div className="mt-1 flex gap-2">
+                {INSTANT_AMOUNTS.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => setUsdcStr(String(a))}
+                    className={`flex-1 rounded-xl py-2 text-base font-semibold ${
+                      usdcNum === a ? 'bg-tg-button text-tg-buttonText' : 'bg-tg-secondary text-tg-text'
+                    }`}
+                  >
+                    ${a}
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={INSTANT_MIN}
+                  step="1"
+                  value={usdcStr}
+                  onChange={(e) => setUsdcStr(e.target.value)}
+                  aria-label={t('trade.amount')}
+                  className="w-20 rounded-xl border border-tg-hint/20 bg-tg-secondary px-2 py-2 text-center text-tg-text"
+                />
+              </div>
+              {book.isFetched && cap == null ? (
+                <p className="mt-2 text-xs text-amber-500">{t('trade.noAsks')}</p>
+              ) : (
+                cap != null &&
+                fill != null && (
+                  <p className="mt-2 text-sm text-tg-text">
+                    {t('trade.instantSummary', { shares: fill.shares.toFixed(2), cents: Math.round(cap * 100) })}
+                  </p>
+                )
+              )}
+              {usdcOk && usdcNum < INSTANT_MIN && (
+                <p className="mt-0.5 text-xs text-amber-500">{t('trade.instantMin', { min: INSTANT_MIN })}</p>
+              )}
+              {balance != null && (
+                <p className="mt-0.5 text-[10px] text-tg-hint">
+                  {t('trade.available', { balance: balance.toFixed(2) })}
+                  {usdcOk && usdcNum > balance ? t('trade.exceedsBalance') : ''}
+                </p>
+              )}
+            </div>
+          ) : (
+          <>
           <label className="block">
             <span className="text-xs font-medium uppercase tracking-wide text-tg-hint">
               {t('trade.limitPrice')}
@@ -284,8 +371,10 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
               <p className="mt-0.5 text-[10px] text-tg-hint">{t('trade.available', { balance: balance.toFixed(2) })}</p>
             )}
           </label>
+          </>
+          )}
 
-          {feeCfg.data?.enabled && priceOk && usdcOk && (
+          {feeCfg.data?.enabled && (instant || priceOk) && usdcOk && (
             <p className="rounded-lg bg-tg-secondary px-3 py-2 text-xs text-tg-hint">
               {t('trade.fee', {
                 pct: (feeCfg.data.spreadBps / 100).toFixed(2),
@@ -301,11 +390,16 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
           )}
           {error && <p className="text-sm text-rose-500">{error}</p>}
           {success && <p className="text-sm text-emerald-500">{success}</p>}
-          {success && <ShareButton marketKey={market.id ?? market.conditionId} side={outcome} />}
+          {success && (
+            <div className="space-y-2 rounded-xl bg-tg-button/10 p-3">
+              <p className="text-sm text-tg-text">💬 {t('trade.shareHint')}</p>
+              <ShareButton marketKey={market.id ?? market.conditionId} side={outcome} />
+            </div>
+          )}
           {success && <NotifyPrompt />}
 
           <p className="text-[10px] leading-snug text-tg-hint">
-            {t('trade.note')}
+            {instant && cap != null ? t('trade.instantNote', { cents: Math.round(cap * 100) }) : t('trade.note')}
           </p>
           <RiskNote short />
 
@@ -315,7 +409,14 @@ export function ClobTradeSheet({ market, outcome, open, onClose }: Props) {
             onClick={() => trade.mutate()}
             className="w-full rounded-xl bg-tg-button py-3 text-base font-semibold text-tg-buttonText disabled:opacity-50"
           >
-            {trade.isPending ? t('trade.submitting') : t('trade.submit')}
+            {trade.isPending
+              ? t('trade.submitting')
+              : instant
+                ? t('trade.buyFor', {
+                    outcome: t(outcome === 'yes' ? 'common.yes' : 'common.no'),
+                    amount: usdcOk ? String(Math.floor(usdcNum * 100) / 100) : '…',
+                  })
+                : t('trade.submit')}
           </button>
         </div>
       </div>

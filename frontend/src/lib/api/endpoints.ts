@@ -49,6 +49,9 @@ export const api = {
 
   me: () => http.get<UserInfo>('/api/me').then((r) => r.data),
 
+  /** Busiest markets about where the app language is spoken; empty for languages without such tags. */
+  listLocalMarkets: () => http.get<Market[]>('/api/markets/local').then((r) => r.data),
+
   listMarkets: (params: {
     page?: number;
     size?: number;
@@ -140,6 +143,9 @@ export const api = {
     size: number;
     signatureType?: OrderSignatureType;
     makerAddress?: string;
+    /** FAK = buy right away up to `price`, cancel the rest; `amount` is the pUSD to spend. */
+    orderType?: 'GTC' | 'FAK';
+    amount?: number;
   }) => http.post<TypedDataResponse>('/api/orders/prepare', body).then((r) => r.data),
 
   submitOrder: (body: { orderHash: string; signature: string; idempotency_key?: string }) =>

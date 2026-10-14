@@ -172,6 +172,16 @@ public class OrderBuilder {
 
         BigInteger sizeShares = req.size().multiply(new BigDecimal(TOKEN_DECIMALS_FACTOR)).toBigInteger();
         BigInteger usdcAmount = req.size().multiply(req.price()).multiply(new BigDecimal(USDC_DECIMALS_FACTOR)).toBigInteger();
+        if (req.fakBuy()) {
+            // Market-style buy (py-clob-client get_market_order_amounts): spend exactly `amount`
+            // (cents), receive at least amount / worst price shares (4 decimals). CLOB rejects
+            // marketable orders with finer amounts.
+            usdcAmount = req.amount().setScale(2, java.math.RoundingMode.DOWN)
+                    .multiply(new BigDecimal(USDC_DECIMALS_FACTOR)).toBigInteger();
+            sizeShares = req.amount().setScale(2, java.math.RoundingMode.DOWN)
+                    .divide(req.price(), 4, java.math.RoundingMode.DOWN)
+                    .multiply(new BigDecimal(TOKEN_DECIMALS_FACTOR)).toBigInteger();
+        }
 
         BigInteger makerAmount;
         BigInteger takerAmount;
@@ -241,7 +251,8 @@ public class OrderBuilder {
         Map<String, Object> wireOrder = new LinkedHashMap<>(message);
         wireOrder.put("expiration", u256Decimal(expirationSec));
 
-        return new BuiltOrder(orderHash, makerAmount, takerAmount, typedData, wireOrder, req.conditionId());
+        return new BuiltOrder(orderHash, makerAmount, takerAmount, typedData, wireOrder, req.conditionId(),
+                req.orderType() == null ? null : req.orderType().name());
     }
 
     /**
@@ -413,7 +424,9 @@ public class OrderBuilder {
             @JsonProperty("typedData") Map<String, Object> typedData,
             @JsonProperty("wireOrder") Map<String, Object> wireOrder,
             /** Market the order belongs to; the signed order itself only carries the outcome token id. */
-            @JsonProperty("conditionId") String conditionId) implements Serializable {
+            @JsonProperty("conditionId") String conditionId,
+            /** CLOB order type to submit with; null means GTC. */
+            @JsonProperty("orderType") String orderType) implements Serializable {
 
         @JsonCreator
         public BuiltOrder(
@@ -422,18 +435,29 @@ public class OrderBuilder {
                 @JsonProperty("takerAmount") BigInteger takerAmount,
                 @JsonProperty("typedData") Map<String, Object> typedData,
                 @JsonProperty("wireOrder") Map<String, Object> wireOrder,
-                @JsonProperty("conditionId") String conditionId) {
+                @JsonProperty("conditionId") String conditionId,
+                @JsonProperty("orderType") String orderType) {
             this.orderHash = orderHash;
             this.makerAmount = makerAmount;
             this.takerAmount = takerAmount;
             this.typedData = typedData;
             this.wireOrder = wireOrder;
             this.conditionId = conditionId;
+            this.orderType = orderType;
+        }
+
+        public BuiltOrder(String orderHash, BigInteger makerAmount, BigInteger takerAmount,
+                          Map<String, Object> typedData, Map<String, Object> wireOrder, String conditionId) {
+            this(orderHash, makerAmount, takerAmount, typedData, wireOrder, conditionId, null);
+        }
+
+        public boolean fak() {
+            return "FAK".equals(orderType);
         }
 
         public BuiltOrder(String orderHash, BigInteger makerAmount, BigInteger takerAmount,
                           Map<String, Object> typedData, Map<String, Object> wireOrder) {
-            this(orderHash, makerAmount, takerAmount, typedData, wireOrder, null);
+            this(orderHash, makerAmount, takerAmount, typedData, wireOrder, null, null);
         }
     }
 }

@@ -34,6 +34,8 @@ public class TradingService {
     /** USDC has 6 decimals; used to humanise fee amounts on the wire. */
     private static final BigDecimal DEFAULT_TICK = new BigDecimal("0.01");
     private static final int SIZE_DECIMALS = 2;
+    /** Polymarket's floor for marketable buys, which skip the per-market minimum share count. */
+    static final BigDecimal MIN_MARKET_BUY = BigDecimal.ONE;
     private static final BigDecimal USDC_DECIMALS_FACTOR = new BigDecimal(BigInteger.valueOf(1_000_000L));
 
     private final OrderBuilder builder;
@@ -92,31 +94,15 @@ public class TradingService {
                 domain == null ? "?" : domain.get("verifyingContract"));
         pending.put(userId, built);
         // The platform fee is charged on bets (buys) only; selling a position before resolution is free.
-        FeeQuote fee = req.side() == OrderDtos.Side.SELL ? null : fees.quote(req);
+        // A FAK buy may fill partly or not at all, so its fee is prepared on submit from the filled amount.
+        FeeQuote fee = req.side() == OrderDtos.Side.SELL || req.fakBuy() ? null : fees.quote(req);
         if (fee != null && maker.equalsIgnoreCase(fee.recipient())) {
             // The fee recipient trading from its own wallet would only pay itself: skip the extra signature.
             fee = null;
         }
         DepositWalletDtos.PreparedBatch feeBatch = null;
         if (fee != null && req.signatureType() == OrderDtos.SignatureType.POLY_1271) {
-            // Funds live in the deposit wallet (pUSD), and the EOA has no gas: charge from there.
-            // An invited user's fee is split in the same batch: the referrer's cut goes to their
-            // deposit wallet (counterfactual address is fine — only its owner can deploy it).
-            ReferralService.Split split = referrals.split(userId, fee.amountMicroUsdc()).orElse(null);
-            String referrerWallet = split == null ? null : depositWallets.depositWalletOf(split.referrerEoa());
-            if (referrerWallet != null
-                    && (referrerWallet.equalsIgnoreCase(fee.recipient()) || referrerWallet.equalsIgnoreCase(maker))) {
-                split = null;
-            }
-            java.util.Map<String, BigInteger> transfers = new java.util.LinkedHashMap<>();
-            if (split != null) {
-                transfers.put(fee.recipient(), fee.amountMicroUsdc().subtract(split.referrerAmount()));
-                transfers.put(referrerWallet, split.referrerAmount());
-            } else {
-                transfers.put(fee.recipient(), fee.amountMicroUsdc());
-            }
-            feeBatch = depositWallets.prepareCollateralTransfers(userId, "TRADING_FEE", transfers);
-            feeLedger.rememberPending(feeBatch.batchHash(), userId, transfers.get(fee.recipient()), split);
+            feeBatch = feeBatch(userId, maker, fee);
         }
         return new OrderDtos.TypedDataResponse(
                 built.orderHash(),
@@ -126,6 +112,58 @@ public class TradingService {
                 fee == null ? null : new BigDecimal(fee.amountMicroUsdc())
                         .divide(USDC_DECIMALS_FACTOR).toPlainString(),
                 fee == null ? null : fee.spreadBps());
+    }
+
+    /**
+     * The fee as a pUSD transfer from the deposit wallet (the EOA has no gas). An invited user's fee
+     * is split in the same batch: the referrer's cut goes to their deposit wallet (counterfactual
+     * address is fine — only its owner can deploy it).
+     */
+    private DepositWalletDtos.PreparedBatch feeBatch(long userId, String maker, FeeQuote fee) {
+        ReferralService.Split split = referrals.split(userId, fee.amountMicroUsdc()).orElse(null);
+        String referrerWallet = split == null ? null : depositWallets.depositWalletOf(split.referrerEoa());
+        if (referrerWallet != null
+                && (referrerWallet.equalsIgnoreCase(fee.recipient()) || referrerWallet.equalsIgnoreCase(maker))) {
+            split = null;
+        }
+        java.util.Map<String, BigInteger> transfers = new java.util.LinkedHashMap<>();
+        if (split != null) {
+            transfers.put(fee.recipient(), fee.amountMicroUsdc().subtract(split.referrerAmount()));
+            transfers.put(referrerWallet, split.referrerAmount());
+        } else {
+            transfers.put(fee.recipient(), fee.amountMicroUsdc());
+        }
+        DepositWalletDtos.PreparedBatch batch = depositWallets.prepareCollateralTransfers(userId, "TRADING_FEE", transfers);
+        feeLedger.rememberPending(batch.batchHash(), userId, transfers.get(fee.recipient()), split);
+        return batch;
+    }
+
+    /** Fee for a FAK buy on what it actually spent; the full amount when CLOB matched without saying how much. */
+    OrderDtos.SubmittedOrderResponse withFillFee(long userId, BuiltOrder built, OrderDtos.SubmittedOrderResponse resp) {
+        if (!built.fak() || !"matched".equalsIgnoreCase(resp.status())) {
+            return resp;
+        }
+        BigDecimal spent;
+        try {
+            spent = resp.filledUsdc() != null
+                    ? new BigDecimal(resp.filledUsdc())
+                    : new BigDecimal(built.makerAmount()).divide(USDC_DECIMALS_FACTOR);
+        } catch (NumberFormatException e) {
+            spent = new BigDecimal(built.makerAmount()).divide(USDC_DECIMALS_FACTOR);
+        }
+        String maker = String.valueOf(built.wireOrder() == null ? "" : built.wireOrder().get("maker"));
+        FeeQuote fee = fees.quoteNotional(spent);
+        if (fee == null || maker.equalsIgnoreCase(fee.recipient())) {
+            return resp;
+        }
+        try {
+            DepositWalletDtos.PreparedBatch batch = feeBatch(userId, maker, fee);
+            return resp.withFee(batch, new BigDecimal(fee.amountMicroUsdc()).divide(USDC_DECIMALS_FACTOR).toPlainString());
+        } catch (RuntimeException e) {
+            // The bet already stands; a fee we failed to prepare must not turn it into an error.
+            log.warn("Fee batch for FAK order {} failed: {}", built.orderHash(), e.toString());
+            return resp;
+        }
     }
 
     /**
@@ -179,6 +217,15 @@ public class TradingService {
             throw ApiException.badRequest("PRICE_OFF_TICK",
                     "Price must be between 0 and 1 in steps of " + tick.stripTrailingZeros().toPlainString());
         }
+        if (req.fakBuy()) {
+            BigDecimal amount = req.amount() == null ? BigDecimal.ZERO : req.amount().setScale(2, RoundingMode.DOWN);
+            if (amount.compareTo(MIN_MARKET_BUY) < 0) {
+                throw ApiException.badRequest("ORDER_TOO_SMALL", "Minimum bet is $" + MIN_MARKET_BUY.toPlainString());
+            }
+            BigDecimal shares = amount.divide(price, 4, RoundingMode.DOWN);
+            return new OrderDtos.PrepareOrderRequest(req.conditionId(), req.tokenId(), req.side(), price, shares,
+                    req.orderType(), req.signatureType(), req.expiration(), req.makerAddress(), amount);
+        }
         BigDecimal size = req.size().setScale(SIZE_DECIMALS, RoundingMode.DOWN);
         BigDecimal minSize = market == null ? null : market.orderMinSize();
         if (size.signum() <= 0 || (minSize != null && size.compareTo(minSize) < 0)) {
@@ -189,7 +236,7 @@ public class TradingService {
                             + " at this price)");
         }
         return new OrderDtos.PrepareOrderRequest(req.conditionId(), req.tokenId(), req.side(), price, size,
-                req.orderType(), req.signatureType(), req.expiration(), req.makerAddress());
+                req.orderType(), req.signatureType(), req.expiration(), req.makerAddress(), req.amount());
     }
 
     /**
@@ -288,6 +335,7 @@ public class TradingService {
                     pending.invalidate(userId, req.orderHash());
                     log.info("Order submitted user={} hash={} status={}", userId, req.orderHash(), resp.status());
                 })
+                .map(resp -> withFillFee(userId, built, resp))
                 .doOnError(err -> {
                     audit.setStatus("FAILED");
                     audit.setErrorMessage(err.getMessage());

@@ -431,4 +431,18 @@ class OrderBuilderTest {
         assertThat(OrderBuilder.builderCodeOrZero(null)).isEqualTo("0x" + "0".repeat(64));
         assertThat(OrderBuilder.builderCodeOrZero("tma")).isEqualTo("0x" + "0".repeat(64));
     }
+
+    @Test
+    void fakBuySpendsTheAmountAndAsksForAtLeastAmountOverCapShares() {
+        var req = new OrderDtos.PrepareOrderRequest("0xabc", "1", OrderDtos.Side.BUY, new BigDecimal("0.56"),
+                new BigDecimal("8.9285"), OrderDtos.OrderType.FAK, OrderDtos.SignatureType.EOA, null, null,
+                new BigDecimal("5"));
+
+        OrderBuilder.BuiltOrder built = orderBuilder.build("0x496b8D9f22Eaa44FC9266f7da1B4a51C3EE58227", req);
+
+        assertThat(built.makerAmount()).isEqualTo(java.math.BigInteger.valueOf(5_000_000));
+        assertThat(built.takerAmount()).as("5 / 0.56 = 8.92857… cut to 4 decimals")
+                .isEqualTo(java.math.BigInteger.valueOf(8_928_500));
+        assertThat(built.orderType()).isEqualTo("FAK");
+    }
 }

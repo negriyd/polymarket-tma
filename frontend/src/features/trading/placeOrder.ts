@@ -11,6 +11,8 @@ interface PlaceOrderArgs {
   price: number;
   /** Shares, in whole cents of a share. */
   size: number;
+  /** Instant buy: fill now at up to `price` per share, cancel what can't fill. `size` is ignored. */
+  instant?: { amount: number };
   /** Signs EIP-712 typed data with the user's wallet (Privy) and returns the signature. */
   sign: (typedData: unknown) => Promise<string>;
   /** Puts the wallet on Polygon before signing, if needed. */
@@ -33,6 +35,7 @@ export async function placeClobOrder(a: PlaceOrderArgs): Promise<SubmittedOrder>
     price: a.price,
     size: a.size,
     signatureType: 'POLY_1271',
+    ...(a.instant ? { orderType: 'FAK' as const, amount: a.instant.amount } : {}),
   });
   await a.ensurePolygon?.();
   // typedData is the ERC-7739 TypedDataSign wrapper; the backend packs the final signature.
@@ -54,9 +57,11 @@ export async function placeClobOrder(a: PlaceOrderArgs): Promise<SubmittedOrder>
   }
 
   // Best effort: the order already stands, so a failure here must not mask the success.
-  if (prep.feeBatch) {
+  // An instant buy's fee comes with the submit result: it is charged on what actually filled.
+  const feeBatch = a.instant ? submitted.feeBatch : prep.feeBatch;
+  if (feeBatch) {
     try {
-      await signAndRelayBatch(prep.feeBatch, a.sign);
+      await signAndRelayBatch(feeBatch, a.sign);
     } catch (err) {
       console.error('Platform fee batch failed (order already submitted):', err);
       a.onFeeError?.(err);

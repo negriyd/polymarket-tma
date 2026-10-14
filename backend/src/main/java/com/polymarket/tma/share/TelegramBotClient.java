@@ -104,12 +104,21 @@ public class TelegramBotClient {
                 "is_personal", true)).then();
     }
 
-    /** Points Telegram at our webhook; only inline queries are needed. */
+    /** Points Telegram at our webhook: inline queries, commands, and being added to / removed from groups. */
     public Mono<Void> setWebhook(String url, String secret) {
         return call("setWebhook", Map.of(
                 "url", url,
                 "secret_token", secret,
-                "allowed_updates", java.util.List.of("inline_query"))).then();
+                "allowed_updates", java.util.List.of("inline_query", "message", "my_chat_member"))).then();
+    }
+
+    /** The command menu in group chats. */
+    public Mono<Void> setGroupCommands() {
+        return call("setMyCommands", Map.of(
+                "scope", Map.of("type", "all_group_chats"),
+                "commands", java.util.List.of(
+                        Map.of("command", "top", "description", "Top forecasters of this chat"),
+                        Map.of("command", "join", "description", "Join this chat's leaderboard")))).then();
     }
 
     private Mono<JsonNode> call(String method, Map<String, Object> body) {

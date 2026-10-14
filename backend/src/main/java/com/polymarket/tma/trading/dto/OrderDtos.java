@@ -14,7 +14,8 @@ public final class OrderDtos {
     private OrderDtos() {}
 
     public enum Side { BUY, SELL }
-    public enum OrderType { GTC, FOK, GTD }
+    /** {@link #FAK}: fill what the book has up to the price cap right away, cancel the rest (one-tap bets). */
+    public enum OrderType { GTC, FOK, GTD, FAK }
     /**
      * CLOB v2 order signature types. {@link #POLY_1271} is the Deposit Wallet flow (mandatory for
      * wallets onboarded after 2026-05): maker = signer = deposit wallet, the EOA signs an
@@ -32,8 +33,20 @@ public final class OrderDtos {
             SignatureType signatureType,
             Long expiration,                         // unix seconds, optional
             /** Optional. Required when {@link #signatureType} is not {@link SignatureType#EOA}. */
-            String makerAddress
-    ) {}
+            String makerAddress,
+            /** pUSD to spend; required for {@link OrderType#FAK} buys, where {@link #price} is the worst price. */
+            BigDecimal amount
+    ) {
+        public PrepareOrderRequest(String conditionId, String tokenId, Side side, BigDecimal price, BigDecimal size,
+                                   OrderType orderType, SignatureType signatureType, Long expiration,
+                                   String makerAddress) {
+            this(conditionId, tokenId, side, price, size, orderType, signatureType, expiration, makerAddress, null);
+        }
+
+        public boolean fakBuy() {
+            return orderType == OrderType.FAK && side == Side.BUY;
+        }
+    }
 
     /**
      * EIP-712 typed data the client must sign with its Privy wallet.
@@ -59,9 +72,25 @@ public final class OrderDtos {
             @JsonProperty("idempotency_key") String idempotencyKey
     ) {}
 
+    /**
+     * @param filledUsdc    pUSD actually spent, when CLOB reports it (FAK buys)
+     * @param feeBatch      for FAK buys the fee is charged on the filled amount, so it is prepared here
+     *                      instead of at {@code /prepare}; null when nothing filled or no fee
+     */
     public record SubmittedOrderResponse(
             String orderId,
             String status,
-            String txHash
-    ) {}
+            String txHash,
+            String filledUsdc,
+            DepositWalletDtos.PreparedBatch feeBatch,
+            String feeAmountUsdc
+    ) {
+        public SubmittedOrderResponse(String orderId, String status, String txHash) {
+            this(orderId, status, txHash, null, null, null);
+        }
+
+        public SubmittedOrderResponse withFee(DepositWalletDtos.PreparedBatch batch, String amountUsdc) {
+            return new SubmittedOrderResponse(orderId, status, txHash, filledUsdc, batch, amountUsdc);
+        }
+    }
 }
