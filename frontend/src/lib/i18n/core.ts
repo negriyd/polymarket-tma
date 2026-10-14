@@ -4,6 +4,17 @@ import { uk } from './locales/uk';
 import { es } from './locales/es';
 import { pt } from './locales/pt';
 import { zh } from './locales/zh';
+import { de } from './locales/de';
+import { fr } from './locales/fr';
+import { it } from './locales/it';
+import { pl } from './locales/pl';
+import { id } from './locales/id';
+import { tl } from './locales/tl';
+import { vi } from './locales/vi';
+import { hi } from './locales/hi';
+import { bn } from './locales/bn';
+import { th } from './locales/th';
+import { ja } from './locales/ja';
 
 /** A message, or its plural forms chosen by `Intl.PluralRules` from the `count` variable. */
 export type Plural = { one?: string; few?: string; many?: string; other: string };
@@ -20,6 +31,17 @@ export const LOCALES = {
   es: { name: 'Español', messages: es },
   pt: { name: 'Português', messages: pt },
   zh: { name: '中文', messages: zh },
+  de: { name: 'Deutsch', messages: de },
+  fr: { name: 'Français', messages: fr },
+  it: { name: 'Italiano', messages: it },
+  pl: { name: 'Polski', messages: pl },
+  id: { name: 'Bahasa Indonesia', messages: id },
+  tl: { name: 'Filipino', messages: tl },
+  vi: { name: 'Tiếng Việt', messages: vi },
+  hi: { name: 'हिन्दी', messages: hi },
+  bn: { name: 'বাংলা', messages: bn },
+  th: { name: 'ไทย', messages: th },
+  ja: { name: '日本語', messages: ja },
 } satisfies Record<string, { name: string; messages: Messages }>;
 
 export type Locale = keyof typeof LOCALES;
@@ -32,7 +54,8 @@ export function isLocale(value: unknown): value is Locale {
 /** Maps a BCP 47 tag ("pt-BR", "zh-Hans", "ru") to a supported locale, or null. */
 export function matchLocale(tag?: string | null): Locale | null {
   if (!tag) return null;
-  const base = tag.toLowerCase().split(/[-_]/)[0];
+  let base = tag.toLowerCase().split(/[-_]/)[0];
+  if (base === 'fil') base = 'tl'; // Filipino: clients send either tag
   return isLocale(base) ? base : null;
 }
 

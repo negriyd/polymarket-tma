@@ -32,7 +32,7 @@ class ShareServiceTest {
         assertThat(ShareService.plainText(market("1"), "yes", ShareTexts.of("ru"), null))
                 .isEqualTo("📊 Will the ceasefire hold through Oct 31?\nДа 78% · Нет 22%\n\n"
                         + "Мой прогноз: Да\nА ты как думаешь?");
-        assertThat(ShareTexts.of("de")).isEqualTo(ShareTexts.of(null));
+        assertThat(ShareTexts.of("ko")).isEqualTo(ShareTexts.of(null));
     }
 
     @Test
@@ -53,5 +53,8 @@ class ShareServiceTest {
         assertThat(partnerText).endsWith("\n\n<i>🎯 Точность прогнозов автора: 72% (18 из 25)</i>");
         assertThat(ShareTexts.authorLine(ShareTexts.of("ru"),
                 new com.polymarket.tma.partner.AuthorService.Accuracy(2, 3, null))).as("too few results").isNull();
+        assertThat(ShareTexts.authorLine(ShareTexts.of("hi"),
+                new com.polymarket.tma.partner.AuthorService.Accuracy(18, 25, 72)))
+                .as("Hindi puts the total first").endsWith("72% (25 में से 18)");
     }
 }

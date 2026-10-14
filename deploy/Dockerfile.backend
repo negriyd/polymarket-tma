@@ -13,9 +13,10 @@ RUN ./gradlew --no-daemon clean bootJar
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
-# Fonts for the PNG market cards: Noto Sans CJK covers Latin, Cyrillic and Chinese.
+# Fonts for the PNG market cards: Noto Sans CJK covers Latin, Cyrillic, Chinese and Japanese;
+# Noto core adds Thai, Devanagari (Hindi) and Bengali.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk \
+    && apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system app && adduser --system --ingroup app app

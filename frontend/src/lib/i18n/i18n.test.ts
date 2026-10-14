@@ -29,13 +29,17 @@ describe('i18n', () => {
     expect(translate('ru', 'pos.endsIn', { count: 5 })).toBe('через 5 дней');
     expect(translate('uk', 'pos.endsIn', { count: 22 })).toBe('за 22 дні');
     expect(translate('zh', 'pos.endsIn', { count: 2 })).toBe('2 天后结束');
+    expect(translate('pl', 'pos.endsIn', { count: 1 })).toBe('kończy się za 1 dzień');
+    expect(translate('pl', 'pos.endsIn', { count: 5 })).toBe('kończy się za 5 dni');
   });
 
   it('maps browser and Telegram language tags', () => {
     expect(matchLocale('pt-BR')).toBe('pt');
     expect(matchLocale('zh-Hans')).toBe('zh');
     expect(matchLocale('UK')).toBe('uk');
-    expect(matchLocale('de')).toBeNull();
+    expect(matchLocale('de-AT')).toBe('de');
+    expect(matchLocale('fil')).toBe('tl');
+    expect(matchLocale('ko')).toBeNull();
     expect(matchLocale(undefined)).toBeNull();
   });
 });

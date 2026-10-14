@@ -86,6 +86,7 @@ class MarketTranslationServiceTest {
         assertThat(MarketLocale.fromHeader("ru-RU,ru;q=0.9,en;q=0.8")).isEqualTo("ru");
         assertThat(MarketLocale.fromHeader("pt-BR")).isEqualTo("pt");
         assertThat(MarketLocale.fromHeader("zh")).isEqualTo("zh");
+        assertThat(MarketLocale.fromHeader("fil-PH")).isEqualTo("tl");
         assertThat(MarketLocale.fromHeader("en-US")).isNull();
         assertThat(MarketLocale.fromHeader("xx")).isNull();
         assertThat(MarketLocale.fromHeader(null)).isNull();

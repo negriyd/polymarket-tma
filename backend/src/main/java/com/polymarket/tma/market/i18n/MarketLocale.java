@@ -21,6 +21,9 @@ public final class MarketLocale {
         }
         String first = acceptLanguage.split(",")[0].split(";")[0].trim();
         String base = first.split("[-_]")[0].toLowerCase(Locale.ROOT);
+        if (base.equals("fil")) {
+            base = "tl"; // Filipino: Telegram and browsers may send either tag
+        }
         return SUPPORTED.contains(base) ? base : null;
     }
 }
